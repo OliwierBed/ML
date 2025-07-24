@@ -1,0 +1,18 @@
+paths:
+  raw_data: data/raw
+  processed_data: data/processed
+  external_data: data/external
+  predictions: predictions/timestamped
+  aggregated_predictions: predictions/aggregated
+  model_dir: models
+  logs_dir: monitor/logs
+
+fetchers:
+  yfinance:
+    api_key: null  # yfinance doesn't require an API key
+  newsapi:
+    api_key: ${NEWSAPI_KEY}  # Set in .env
+  fred:
+    api_key: ${FRED_KEY}  # Set in .env
+  google_trends:
+    enabled: true

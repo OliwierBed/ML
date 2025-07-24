@@ -1,0 +1,7 @@
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt  
+python fetchers/download_data.py
+python scripts/preprocessors/tech_indicators.py --tickers AAPL,MSFT,TSLA --intervals "1d,1h,1wk"
+python scripts/store_to_db.py
+uvicorn api.main:app --reload --host 127.0.0.1 --port 8000

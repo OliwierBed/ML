@@ -6,7 +6,7 @@ COPY . /app
 
 RUN touch backtest/__init__.py && touch api/__init__.py
 
-RUN pip install --upgrade pip && pip install -r req.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 EXPOSE 8000
 EXPOSE 8501

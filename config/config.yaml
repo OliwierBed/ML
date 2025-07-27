@@ -6,6 +6,8 @@ project:
 data:
   tickers: ["AAPL", "MSFT", "TSLA"]
   intervals: ["1h", "1d", "1wk"]
+  raw_data_dir: "data-pipelines/feature_stores/data/raw"
+  processed_data_dir: "data-pipelines/feature_stores/data/processed"
 
 paths:
   feature_stores_processed: "data-pipelines/feature_stores/data/processed"

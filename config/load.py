@@ -9,3 +9,5 @@ def load_config(path: str | None = None):
     if path is None:
         path = Path(__file__).with_name("config.yaml")
     return OmegaConf.load(path)
+
+

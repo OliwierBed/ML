@@ -1,0 +1,13 @@
+0.Stacking MLów i zamiana sygnałów na pewność w % i o ile, explain why, anomaly alert
+1.Rozwój modelów ML (najpierw tech indicators
+2. API dla frontendu, backendu i ML:
+3.PostgreSQL
+przechowywania wyników backtestów i scoringu,
+sygnałów i transakcji,
+zarządzania userami,
+synchronizacji pipeline’ów,
+budowy dashboardu i API.
+4.Monitoring, logowanie i metryki, testy jednostkowe:
+5. Zbieranie i przechowywanie metadanych o modelach
+6. System kolejkowania zadań (opcjonalnie na przyszłość):
+

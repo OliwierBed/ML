@@ -1,0 +1,154 @@
+Katalog app/ jest głównym miejscem, gdzie znajduje się kod uruchamianej aplikacji (np. dashboard, interfejsy, dodatkowe narzędzia). 
+Zawiera skrypty związane z obsługą użytkownika, integracją frontendu z backendem, logiką prezentacji oraz narzędziami wspierającymi. Poniżej opis każdego pliku:
+
+1. dashboard.py
+Opis:
+Główny plik uruchamiający dashboard aplikacji, najczęściej przy użyciu frameworka Streamlit.
+
+Co robi:
+
+Tworzy graficzny interfejs użytkownika, w którym można wybrać ticker, interwał, strategię.
+
+Komunikuje się z backendem (np. API na porcie 8000), pobiera listy tickerów, wyniki backtestów, statystyki, itp.
+
+Wyświetla tabele, wykresy, rankingi, itp.
+
+Może umożliwiać filtrowanie i eksplorację wyników backtestów.
+
+Typowe funkcje:
+
+Ładowanie danych z API (requests.get(...))
+
+Wyświetlanie interaktywnych wykresów/tabel
+
+Jak uruchomić:
+
+streamlit run app/dashboard.py
+
+Główne pliki, z których korzysta:
+
+api/ (dostęp do endpointów)
+
+config/ (opcjonalnie, jeśli konfiguracja potrzebna w dashboardzie)
+
+Pliki wyników z katalogów results/data-pipelines/feature_stores/data/processed, ensemble itp.
+
+
+
+
+2. prepare_full_ensemble.py
+Opis:
+Skrypt do przygotowania pełnych plików ensemble – czyli łączenia/wzbogacania wyników różnych strategii w jedną zbiorczą ramkę danych.
+
+Co robi:
+
+Wczytuje wygenerowane wcześniej pliki *_ensemble.csv (np. AAPL_1h_ensemble.csv)
+
+Może doklejać, uzupełniać, agregować dodatkowe kolumny/statystyki, lub przeliczać metryki na potrzeby końcowego podsumowania
+
+Zapisuje wzbogacone pliki jako np. *_ensemble_full.csv
+
+Pliki wyjściowe:
+
+data-pipelines/feature_stores/data/processed/ensemble/*_ensemble_full.csv
+
+Jak uruchomić:
+
+python app/prepare_full_ensemble.py
+
+
+
+3. models.py
+Opis:
+Plik z definicjami modeli (w sensie: klasy modelowe/struktury, nie modele ML).
+Może zawierać dataklasy lub klasy opisujące strukturę danych, typów, żądań, odpowiedzi, itp.
+
+Co robi:
+
+Definiuje klasy pomocnicze, które pozwalają na typowane przekazywanie danych między backendem, frontendem i API.
+
+Ułatwia serializację/deserializację danych (np. przy współpracy FastAPI lub Pydantic).
+
+Kiedy używany?
+
+Gdy chcesz, żeby Twoje API/Streamlit/dashboard miał jasno zdefiniowane struktury (np. Response, StrategyResult, itp.).
+
+Często importowany przez dashboard.py lub API.
+
+Pliki powiązane:
+
+Może współpracować z api/models.py (ale często oddzielny, żeby nie było cyklicznych zależności).
+
+
+
+4. dockerfile
+Opis:
+Plik konfiguracyjny Docker, dzięki któremu budujesz obraz kontenera dla Twojej aplikacji.
+
+Co robi:
+
+Definiuje bazowy obraz (np. python:3.11-slim)
+
+Określa, które pliki kopiować, jakie zależności instalować (requirements.txt)
+
+Definiuje polecenie uruchamiające (CMD) – np. streamlit run app/dashboard.py albo uvicorn api.main:app
+
+Kiedy używany?
+
+Przy wdrożeniach, pracy w chmurze, testach środowiskowych.
+
+Jak zbudować i uruchomić:
+
+docker build -t ml-trading-bot .
+docker run -p 8501:8501 -p 8000:8000 ml-trading-bot
+
+
+
+
+5. .gitignore
+Opis:
+Lista plików/katalogów, których nie chcesz commitować do repozytorium Git (np. __pycache__/, .env, pliki danych tymczasowych, itp.).
+
+Jak używać:
+
+Edytujesz ten plik, żeby niepotrzebne śmieci nie trafiały do repo.
+
+Przykład:
+
+
+__pycache__/
+*.pyc
+.env
+venv/
+
+
+
+
+6. requirements.txt i req.txt
+Opis:
+Lista zależności Python do zainstalowania przez pip.
+
+Co robi:
+
+Wymienia wszystkie pakiety wymagane przez projekt (pandas, streamlit, requests, itp.)
+
+req.txt może być wersją roboczą, testową, albo alternatywną (możesz go usunąć, jeśli nie korzystasz).
+
+Jak używać:
+
+
+pip install -r requirements.txt
+Gdzie wykorzystywany:
+
+Przez Dockera (w dockerfile)
+
+Lokalnie przy pierwszym uruchomieniu projektu
+
+
+
+7. readme
+Opis:
+Plik dokumentacyjny (najczęściej README.md), zawierający podstawowe informacje o projekcie, instrukcje uruchomienia, opis katalogów/pliki, przykłady użycia, itp.
+
+Zalecenie:
+Zamień na README.md i uzupełnij o sekcje z Twoją dokumentacją.

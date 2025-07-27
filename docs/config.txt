@@ -1,0 +1,19 @@
+Katalog config służy do przechowywania wszystkich plików konfiguracyjnych Twojego projektu – zarówno w formacie YAML, jak i JSON, a także pomocniczych narzędzi do ich ładowania. 
+Dzięki temu cała konfiguracja (ścieżki, ustawienia modeli, parametry strategii, globalne ustawienia, itd.) znajduje się w jednym miejscu, co bardzo ułatwia zarządzanie i rozwijanie projektu.
+
+
+1. config.yaml
+Co to jest?
+Główny plik konfiguracyjny projektu.
+
+2. settings.yaml
+Co to jest?
+Dodatkowy plik konfiguracyjny – zwykle do trzymania innych ustawień, np. środowiskowych, sekretów, API keyów, alternatywnych parametrów.
+
+3. load.py
+Co to jest?
+Skrypt Pythona do ładowania i walidacji konfiguracji. Służy do programistycznego wczytywania plików YAML/JSON i udostępniania ich dalej w kodzie (np. jako globalna zmienna lub obiekt konfiguracyjny).
+
+4. db/ (podkatalog)
+Co to jest?
+Katalog na konfigi dotyczące bazy danych.

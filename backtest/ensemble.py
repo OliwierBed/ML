@@ -5,21 +5,30 @@ from config.load import load_config
 
 config = load_config()
 
-TOP_STRATEGIES_FILE = "backtest/results/top_per_bucket.csv"
-PROCESSED_DIR = config.paths.feature_stores_processed
-ENSEMBLE_DIR = os.path.join(config.paths.feature_stores_processed, "ensemble")
+RESULTS_DIR = getattr(config.paths, "results", "data-pipelines/feature_stores/data/results")
+PROCESSED_DIR = getattr(config.paths, "feature_stores_processed", "data-pipelines/feature_stores/data/processed")
+ENSEMBLE_DIR = os.path.join(PROCESSED_DIR, "ensemble")
+TOP_STRATEGIES_FILE = os.path.join(RESULTS_DIR, "top_per_bucket.csv")
 
 os.makedirs(ENSEMBLE_DIR, exist_ok=True)
 
+def find_backtest_file(filename, strategy, results_dir=RESULTS_DIR):
+    # Zamien np. AAPL_1h_20250727_222034_indicators.csv -> AAPL_1h_20250727_222034_indicators_macd_backtest.csv
+    base = filename.replace('.csv', f'_{strategy}_backtest.csv')
+    path = os.path.join(results_dir, base)
+    return path if os.path.exists(path) else None
+
 def load_signal(file_path):
     df = pd.read_csv(file_path, sep=";")
+    # sprawdź, czy mamy wymagane kolumny
+    if "date" not in df.columns or "signal" not in df.columns:
+        raise ValueError(f"Brak wymaganych kolumn 'date'/'signal' w {file_path}")
     df["date"] = pd.to_datetime(df["date"])
     df.set_index("date", inplace=True)
     return df["signal"]
 
 def main():
     top_df = pd.read_csv(TOP_STRATEGIES_FILE)
-
     grouped_signals = defaultdict(list)
     index_reference = {}
 
@@ -29,7 +38,10 @@ def main():
         interval = row["interval"]
         strategy = row["strategy"]
 
-        file_path = os.path.join(PROCESSED_DIR, file_name)
+        file_path = find_backtest_file(file_name, strategy)
+        if not file_path:
+            print(f"❌ Nie znaleziono pliku sygnału: {file_name} [{strategy}]")
+            continue
 
         try:
             signal_series = load_signal(file_path)

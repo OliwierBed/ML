@@ -1,0 +1,114 @@
+W tym folderze znajdują się wszystkie skrypty i klasy odpowiedzialne za backtesty, scoring strategii oraz analizę wyników. Każdy plik spełnia konkretną funkcję w architekturze systemu tradingowego.
+
+1. base.py
+Opis:
+Definiuje klasy bazowe, na których opierają się inne komponenty systemu (np. bazowa klasa strategii, portfela, ewaluatora).
+Pliki wynikowe:
+Nie generuje bezpośrednio plików do results/ – to “fundament” dla reszty kodu.
+
+2. ensemble.py
+Opis:
+Tworzy strategie ensemble – łączy wyniki wybranych (np. TOP N wg metryki Sharpe) strategii pojedynczych dla danego tickera/interwału.
+Co generuje:
+
+Pliki CSV w processed/ensemble/, np.
+
+AAPL_1d_ensemble.csv
+
+AAPL_1d_ensemble_full.csv
+Te pliki są później poddawane backtestom tak jak zwykłe strategie.
+
+3. evaluate.py
+Opis:
+Wylicza metryki skuteczności dla pojedynczej strategii na konkretnych danych (np. Sharpe, Sortino, Max Drawdown, Win Rate, CAGR, MAR, final equity).
+Pliki wynikowe:
+Najczęściej funkcje używane przez runner’y i scoring – nie zapisuje plików bezpośrednio, lecz zwraca wyniki, które runner zapisuje.
+
+4. evaluation.py
+Opis:
+Rozszerzenie lub uzupełnienie evaluate – tu możesz znaleźć dodatkowe metody scoringu, inne metryki, rozkład ryzyka, itp.
+Pliki wynikowe:
+Tak samo – pośrednio bierze udział w generowaniu wyników (dane trafiają do raportów przez runner’y).
+
+5. portfolio.py
+Opis:
+Zawiera logikę “wirtualnego portfela”, czyli symuluje trading na podstawie sygnałów z wybranej strategii – jak rosłaby/zmniejszała się wartość rachunku, ile byłoby transakcji, itp.
+Pliki wynikowe:
+Nie zapisuje sam wyników – dostarcza wyniki do runner’ów (np. equity curve).
+
+6. rules.py
+Opis:
+Definiuje “reguły wejścia i wyjścia”, czyli konkretne warunki generujące sygnały (np. wejście po przecięciu MACD, wyjście po spadku poniżej średniej, itp.).
+Pliki wynikowe:
+Nie generuje sam wyników.
+
+7. runner.py
+Opis:
+Uruchamia pojedynczy backtest na wybranym tickerze, interwale i strategii.
+Pliki wynikowe:
+Może wygenerować indywidualne pliki wynikowe, equity curve, raport txt/csv z przebiegu strategii (np. w katalogu results/ – zależy od implementacji).
+
+8. runner_batch.py
+Opis:
+To główny “wsadowy” orchestrator – uruchamia wszystkie strategie na wszystkich tickerach i interwałach.
+Główne pliki wynikowe, które tworzy w results/:
+
+batch_results.csv
+
+Zbiorcze wyniki wszystkich strategii: ticker, interwał, strategia, metryki (Sharpe, CAGR, Drawdown itd.).
+
+top_overall.csv
+
+Top 20 strategii globalnie wg głównej metryki.
+
+top_per_bucket.csv
+
+Najlepsza strategia per (ticker, interwał) (czyli np. najlepsza dla AAPL/1d, MSFT/1h itd.).
+
+9. runner_ensemble.py
+Opis:
+Analogiczny do runner_batch, ale dla plików “ensemble” – czyli przetwarza i analizuje portfelowe połączenie strategii.
+Pliki wynikowe:
+Może tworzyć zbiorcze wyniki dla ensemble, np. ranking plików z processed/ensemble/ i podsumowania.
+
+10. score_strategies.py
+Opis:
+Narzędzie do rankowania strategii po wszystkich testach – analizuje wyniki z batcha, wyłania najlepsze, zapisuje je do czytelnych raportów.
+Pliki wynikowe:
+
+top_overall.csv
+
+top_per_bucket.csv
+(jeśli runner_batch już to generuje, ten plik może być alternatywą lub służyć do ręcznego scoringu, w zależności od implementacji).
+
+11. signals.py
+Opis:
+Zawiera funkcje do generowania sygnałów (np. buy/sell/hold) na podstawie wskaźników (np. przecięcie MACD, przekroczenie progu RSI).
+Pliki wynikowe:
+Raczej nie zapisuje plików samodzielnie – sygnały są wykorzystywane w portfolio i runnerach.
+
+12. utils.py
+Opis:
+Pomocnicze narzędzia i funkcje do obsługi plików, konwersji dat, ładowania csv, itp.
+Pliki wynikowe:
+Nie generuje samodzielnie plików do results/.
+
+13.Katalog results/ – co tu się pojawia?
+Najważniejsze pliki wynikowe (mogą się nieco różnić, jeśli są inne w Twoim repozytorium):
+
+batch_results.csv
+Wszystkie pojedyncze wyniki backtestów wsadowych – każda strategia x ticker x interwał.
+
+top_overall.csv
+Globalny ranking strategii wg wybranej metryki (np. Sharpe Ratio).
+
+top_per_bucket.csv
+Najlepsza strategia dla każdej pary ticker/interwał (bucket = grupa).
+
+(opcjonalnie) inne raporty, np.:
+
+ensemble_results.csv – jeśli jest
+
+equity_curve_XXX.csv – przebiegi equity dla wybranych strategii
+
+logi testów, szczegółowe wyniki transakcji itd.

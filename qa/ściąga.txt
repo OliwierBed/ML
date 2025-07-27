@@ -1,0 +1,201 @@
+📚 ML Trading Bot – od podstaw do MVP
+1. Cel projektu – po co to wszystko?
+Wyobraź sobie, że chcesz zautomatyzować analizę giełdową, tak żeby komputer sam:
+
+pobierał dane o notowaniach akcji,
+
+liczył różne wskaźniki techniczne,
+
+oceniał, która strategia zarabia najwięcej,
+
+testował te strategie na historycznych danych,
+
+generował sygnały: kupić, sprzedać, czekać,
+
+i w przyszłości – podejmował decyzje w oparciu o uczenie maszynowe (ML).
+
+Całość ma być modułowa, skalowalna i przejrzysta, byś mógł łatwo:
+
+dorzucić nowe strategie,
+
+trenować modele AI,
+
+pokazać wyniki na stronie WWW,
+
+rozwijać projekt zespołowo.
+
+2. Z jakich elementów składa się projekt?
+Twój projekt to zestaw katalogów (folderów), z których każdy ma swoją rolę:
+
+data-pipelines/ – ETL, czyli pobieranie i obróbka danych
+
+backtest/ – symulacja strategii giełdowych na danych historycznych
+
+api/ – udostępnianie danych i wyników przez API (FastAPI)
+
+app/ – interfejs użytkownika (Streamlit)
+
+config/ – konfiguracja projektu (np. tickery, interwały)
+
+docker/ – konteneryzacja, uruchamianie projektu w Dockerze
+
+inne pliki – narzędzia, pomocnicze skrypty, dokumentacja, itd.
+
+3. Jak wygląda przepływ danych?
+Wyobraź sobie fabrykę danych:
+
+Pobieranie danych
+Skrypt pobiera dane giełdowe (np. kursy akcji AAPL) i zapisuje je w formie surowych plików CSV.
+
+Surowe dane: takie, jakie dostajesz z rynku, bez przetwarzania.
+
+Przetwarzanie
+Kolejny skrypt liczy wskaźniki techniczne (np. MACD, RSI, SMA, Bollinger Bands).
+Dane trafiają do kolejnego katalogu jako „przetworzone” – masz już gotowe „cechy” do analizy.
+
+Backtest
+Przetestuj różne strategie na tych danych (np. czy lepiej działa RSI czy MACD).
+Wyniki (np. ile byś zarobił) zapisują się do kolejnych plików – ranking, statystyki, wykresy.
+
+API i aplikacja webowa
+Dzięki API możesz podejrzeć wyniki na stronie WWW (Streamlit), a w przyszłości także przez backend.
+
+Wizualizacja / decyzje
+Na końcu masz panel, gdzie możesz zobaczyć, które strategie są najlepsze, jak wyglądałby Twój portfel, itp.
+
+4. Opis katalogów i plików
+data-pipelines/
+fetchers/ – skrypty do pobierania danych (np. download_data.py).
+
+Pobierają dane OHLCV (Open, High, Low, Close, Volume) z Yahoo Finance lub innych API.
+
+Dane trafiają do feature_stores/data/raw/.
+
+preprocessors/ – liczenie wskaźników technicznych (np. tech_indicators.py).
+
+Przetwarzają surowe dane i zapisują je do feature_stores/data/processed/.
+
+feature_stores/data/ – wszystkie dane w jednym miejscu:
+
+raw/ – surowe dane
+
+processed/ – dane z wyliczonymi wskaźnikami
+
+processed/ensemble/ – połączenie (agregacja) kilku strategii (ensemble)
+
+results/ – wyniki testów i rankingów strategii
+
+generate_signals.py – narzędzie (opcjonalne) do dodawania kolumny „signal” na bazie MACD.
+
+backtest/
+Silnik, który symuluje strategię inwestowania:
+
+Dla każdego pliku z danymi uruchamia strategię (np. „kupuj, jeśli RSI < 30”).
+
+Liczy: zysk, ryzyko, drawdown, Sharpe Ratio, itd.
+
+Wyniki trafiają do feature_stores/data/results/ jako:
+
+batch_results.csv – pełne wyniki
+
+top_overall.csv – najlepsze strategie globalnie
+
+top_per_bucket.csv – najlepsze strategie dla każdej pary ticker+interwał
+
+ensemble.py – tworzy „super-strategię” z kilku najlepszych (stacking/ensemble).
+
+utils.py – funkcje pomocnicze.
+
+api/
+Kod FastAPI, czyli REST API dla frontendu.
+
+Udostępnia: listę tickerów, interwałów, strategii, wyniki scoringu, itp.
+
+Pozwala na łatwe podłączenie panelu webowego lub innego klienta.
+
+app/
+Kod panelu webowego (Streamlit).
+
+Umożliwia wybieranie tickera, interwału, strategii, przeglądanie wykresów i statystyk.
+
+Komunikuje się przez API.
+
+config/
+Pliki YAML (np. config.yaml) trzymają konfigurację:
+
+Listę tickerów, interwałów, strategii
+
+Ścieżki do plików
+
+Parametry dla modeli
+
+5. Jak to działa krok po kroku?
+Przykład:
+Pobierasz dane:
+
+bash
+Kopiuj
+Edytuj
+python data-pipelines/fetchers/download_data.py
+Dostajesz np. AAPL_1d_20250727_174306.csv w raw/.
+
+Liczenie wskaźników:
+
+bash
+Kopiuj
+Edytuj
+python data-pipelines/preprocessors/tech_indicators.py
+Dostajesz np. AAPL_1d_20250727_174608_indicators.csv w processed/.
+
+Backtest:
+
+bash
+Kopiuj
+Edytuj
+python backtest/runner_batch.py
+Dostajesz wyniki w results/, np. batch_results.csv, top_overall.csv.
+
+Ensemble:
+Skrypt automatycznie tworzy pliki *_ensemble.csv w processed/ensemble/.
+
+Wizualizacja:
+Odpalasz aplikację:
+
+bash
+Kopiuj
+Edytuj
+streamlit run app/dashboard.py
+i widzisz wyniki w przeglądarce.
+
+6. Co to jest „ensemble” i stacking?
+To „super-strategia” złożona z wielu strategii:
+
+Zamiast polegać na jednym wskaźniku, łączysz ich wiele (np. RSI, MACD, SMA).
+
+Możesz zrobić stacking: osobne modele ML, których wyniki agreguje jeszcze jeden meta-model.
+
+Celem jest uzyskanie lepszych wyników niż pojedyncza strategia.
+
+7. Jak to odpalisz na swoim komputerze?
+Zainstaluj Dockera (albo uruchom lokalnie, jak wolisz).
+
+Sklonuj repozytorium.
+
+Uruchom komendy w katalogach, wg dokumentacji.
+
+Odpal panel webowy i podziwiaj wyniki.
+
+8. Co planujemy na przyszłość?
+Wprowadzić prawdziwe modele ML (np. LSTM, Random Forest, boosting, transformer, NLP).
+
+Rozbudować feature store – dorzucić dane makro, sentyment, newsy, itp.
+
+Przechowywać wyniki i sygnały w bazie danych (np. PostgreSQL).
+
+Dodać obsługę wielu użytkowników, logowanie, itp.
+
+Automatyzacja przez CI/CD – automatyczne testowanie i deployment.
+
+Rozdzielić na osobne serwisy: backend (API), ML, frontend.
+
+Monitoring, alerty, wersjonowanie modeli.

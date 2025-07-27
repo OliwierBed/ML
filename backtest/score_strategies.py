@@ -12,7 +12,8 @@ except Exception:
 def main():
     cfg = load_config()
 
-    RESULTS_DIR = getattr(cfg.paths, "backtest_results", "backtest/results")
+    # POBIERANIE ŚCIEŻEK Z CONFIGA!
+    RESULTS_DIR = getattr(cfg.paths, "results", "backtest/results")
     in_path = os.path.join(RESULTS_DIR, "batch_results.csv")
     out_top_overall = os.path.join(RESULTS_DIR, "top_overall.csv")
     out_top_bucket = os.path.join(RESULTS_DIR, "top_per_bucket.csv")
@@ -27,7 +28,7 @@ def main():
     direction = getattr(cfg.scoring, "direction", "desc").lower()
     ascending = direction != "desc"
 
-    # UWAGA: Twoje CSV jest rozdzielane średnikiem!
+    # Twoje CSV jest rozdzielane średnikiem!
     df = pd.read_csv(in_path, sep=";")
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
 

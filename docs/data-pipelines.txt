@@ -1,0 +1,47 @@
+W tym folderze są wszystkie skrypty do pobierania, przygotowywania i obróbki danych (ETL), czyli to co tworzy cały "feature store" – dane surowe, dane przetworzone, wskaźniki, itp.
+
+fetchers/download_data.py
+
+Co robi: Pobiera dane surowe dla zadanych tickerów i interwałów (np. AAPL, MSFT, 1d, 1h) i zapisuje pliki CSV w data/raw/.
+
+Jak działa: Korzysta np. z Yahoo Finance API lub innego źródła. Może pobierać dane OHLCV (Open, High, Low, Close, Volume) dla danego instrumentu.
+
+Jak uruchomić:
+
+bash
+Kopiuj
+Edytuj
+python data-pipelines/fetchers/download_data.py
+Wyjście: Pliki CSV w data-pipelines/feature_stores/data/raw/, np. AAPL_1d_20250727_174306.csv
+
+preprocessors/tech_indicators.py
+Co robi: Na podstawie pobranych danych surowych tworzy nowe pliki z wyliczonymi wskaźnikami technicznymi (np. SMA, EMA, MACD, RSI, Bollinger Bands, Stochastic itd.)
+
+Jak działa: Wczytuje pliki z raw/, liczy wskaźniki, zapisuje do processed/.
+
+Jak uruchomić:
+
+bash
+Kopiuj
+Edytuj
+python data-pipelines/preprocessors/tech_indicators.py
+Wyjście: Pliki CSV w data-pipelines/feature_stores/data/processed/, np. AAPL_1d_20250727_174608_indicators.csv
+
+feature_stores/data/
+raw/ – tu są surowe dane pobrane przez fetchery.
+
+processed/ – tu są przetworzone dane z wyliczonymi wskaźnikami.
+
+processed/ensemble/ – tu są dane po scaleniu kilku strategii (ensemble), gotowe do backtestów.
+
+results/ – tu trafiają zbiorcze wyniki testów i scoringu strategii, np. pliki rankingowe, najlepsze strategie itp.
+
+
+generate_signals.py
+plik pomocniczy, nie wymagany do działania głównego pipeline’u backtestu!
+
+Do analizy ML,
+
+Batchowej wizualizacji sygnałów,
+
+Porównania generowanych sygnałów offline.

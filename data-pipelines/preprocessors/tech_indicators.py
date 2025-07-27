@@ -4,10 +4,23 @@ import os
 from datetime import datetime
 import argparse
 import logging
+import yaml
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def process_indicators(ticker: str, interval: str = "1d", input_dir: str = "data/raw", output_dir: str = "data/processed") -> None:
+def load_config():
+    with open("config/config.yaml", "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+def process_indicators(
+    ticker: str, interval: str = "1d", input_dir: str = None, output_dir: str = None
+) -> None:
+    config = load_config()
+    # Pobierz ścieżki z configa jeśli nie podano
+    if input_dir is None:
+        input_dir = config["data"].get("raw_data_dir", "data-pipelines/feature_stores/data/raw")
+    if output_dir is None:
+        output_dir = config["data"].get("processed_data_dir", "data-pipelines/feature_stores/data/processed")
     # Znajdź pliki dla danego tickera i interwału
     files = [f for f in os.listdir(input_dir) if f.startswith(f"{ticker}_{interval}_") and f.endswith(".csv")]
     if not files:
@@ -16,7 +29,6 @@ def process_indicators(ticker: str, interval: str = "1d", input_dir: str = "data
     
     latest_file = max(files, key=lambda x: os.path.getmtime(os.path.join(input_dir, x)))
     file_path = os.path.join(input_dir, latest_file)
-    
     # Wczytaj dane
     try:
         df = pd.read_csv(file_path, sep=";", decimal=".", parse_dates=["Date"], encoding="utf-8-sig")
@@ -99,9 +111,11 @@ def process_indicators(ticker: str, interval: str = "1d", input_dir: str = "data
         df["Close_Norm"] = (df["Close"] - df["Close"].min()) / (df["Close"].max() - df["Close"].min())
         
         # Usuń wiersze z NaN w kluczowych wskaźnikach
-        indicator_columns = ["Close", "Adj_Close", "Close_Norm", "SMA_20", "RSI_14", "ATR_14", "OBV", 
-                            "BB_Low", "BB_Mid", "BB_High", "Stoch_K", "Stoch_D", 
-                            "MACD", "MACD_Signal", "MACD_Hist"]
+        indicator_columns = [
+            "Close", "Adj_Close", "Close_Norm", "SMA_20", "RSI_14", "ATR_14", "OBV", 
+            "BB_Low", "BB_Mid", "BB_High", "Stoch_K", "Stoch_D", 
+            "MACD", "MACD_Signal", "MACD_Hist"
+        ]
         df = df.dropna(subset=indicator_columns)
         
         # Zapisz dane
@@ -116,12 +130,23 @@ def process_indicators(ticker: str, interval: str = "1d", input_dir: str = "data
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process technical indicators")
-    parser.add_argument("--tickers", type=str, default="AAPL,MSFT,TSLA", help="Comma-separated list of tickers")
-    parser.add_argument("--intervals", type=str, default="1d,1h,1wk", help="Comma-separated list of intervals")
+    parser.add_argument("--tickers", type=str, default=None, help="Comma-separated list of tickers")
+    parser.add_argument("--intervals", type=str, default=None, help="Comma-separated list of intervals")
+    parser.add_argument("--input_dir", type=str, default=None, help="Directory for raw data")
+    parser.add_argument("--output_dir", type=str, default=None, help="Directory for processed data")
     args = parser.parse_args()
-    
-    for ticker in args.tickers.split(","):
-        for interval in args.intervals.split(","):
+
+    config = load_config()
+    tickers = args.tickers.split(",") if args.tickers else config["data"].get("tickers", ["AAPL", "MSFT", "TSLA"])
+    intervals = args.intervals.split(",") if args.intervals else config["data"].get("intervals", ["1d", "1h", "1wk"])
+
+    for ticker in tickers:
+        for interval in intervals:
             interval = interval.strip()
             if not interval: continue
-            process_indicators(ticker, interval)
+            process_indicators(
+                ticker, 
+                interval, 
+                input_dir=args.input_dir, 
+                output_dir=args.output_dir
+            )

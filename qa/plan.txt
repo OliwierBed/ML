@@ -1,0 +1,124 @@
+Etap 2
+1. Wprowadzić bazę danych (np. PostgreSQL)
+Wyniki backtestów, sygnały, transakcje, logi, metadane o modelach do bazy (nie do plików CSV).
+
+Umożliwić szybkie zapytania, backupy, wersjonowanie, współdzielenie.
+
+Zaimplementować migracje, integrację z ORM (np. SQLAlchemy).
+
+2. Rozdzielić projekt na 3 główne serwisy (mikroserwisy):
+Backend/API (np. FastAPI)
+
+Obsługa zapytań, dostęp do bazy, autoryzacja, logika aplikacji.
+
+Serwis ML (trening/predykcja modeli)
+
+Oddzielny worker do trenowania modeli, scoringu, kolejkowania zadań.
+
+Frontend (np. Streamlit lub React)
+
+Interfejs użytkownika, wizualizacje, komunikacja przez API.
+
+3. Dodać system użytkowników i autoryzacji
+Logowanie, role (admin/user), historia akcji, indywidualne portfele.
+
+4. Wprowadzić system kolejkowania zadań
+Task queue (np. Celery, RabbitMQ, Redis Queue) do zarządzania ciężkimi zadaniami (backtest, trening, predykcja).
+
+Możliwość uruchamiania zadań w tle i monitorowania postępu.
+
+5. Monitoring, logowanie, alerty
+Zbierać logi z wszystkich serwisów, wdrożyć monitoring (np. Grafana, Prometheus), testy jednostkowe, testy integracyjne.
+
+6. Modularny feature store
+Zbudować elastyczny system przechowywania cech/modeli/danych wejściowych, żeby łatwo dołączać makro, newsy, sentyment itd.
+
+7. System wersjonowania modeli i metadanych
+Każdy model z zapisem: kiedy trenowany, na czym, jakie wyniki, kto trenował, jakie parametry.
+
+Możliwość powrotu do starszej wersji.
+
+8. Budować i rozwijać prawdziwe modele ML
+Zautomatyzować feature engineering, selekcję cech, stacking modeli, ensembling, trenowanie na nowych typach danych.
+
+9. System do dashboardów i wizualizacji
+Umożliwić użytkownikom wybór, analizę, porównywanie strategii i modeli.
+
+10. CI/CD i deployment
+Pipeline do automatycznego wdrażania kodu, testowania, budowania obrazów Docker, rollbacku itd.
+
+
+
+
+
+1. Frontend – przejście na React/Vue/Svelte
+Teraz: Masz prosty dashboard w Streamlit – super do prototypowania, wizualizacji i pierwszych testów.
+
+W przyszłości:
+
+React (albo Vue/Svelte):
+
+Dużo większa kontrola nad interfejsem i UX.
+
+Dynamiczne, interaktywne wykresy i panele (np. wykresy świecowe, customowe dashboardy).
+
+Integracja z API (np. FastAPI).
+
+Możesz łatwo dodać obsługę użytkowników, autoryzację, profile.
+
+Streamlit możesz dalej używać do eksploracji danych dla siebie, ale "produkcyjny" frontend polecam oddzielić (jako SPA - Single Page App).
+
+2. Backend – oddzielenie warstw
+Oddziel ML backend od API (czyli ML serwuje modele, a API to logika biznesowa i pośrednik do bazy danych, zarządzania userami itd.)
+
+FastAPI to dobry wybór na API, można potem "dołączać" do niego serwisy ML (np. przez REST/gRPC).
+
+3. System użytkowników i autoryzacja
+Jeśli kiedykolwiek myślisz o tym, by aplikacja była dostępna innym (nawet w rodzinie/firmie) – trzeba wprowadzić autoryzację, logowanie, zarządzanie userami.
+
+Da się zrobić w FastAPI + React bardzo wygodnie (JWT tokeny itp.).
+
+4. Infrastruktura – docker-compose, monitoring, CI/CD
+docker-compose – odpalenie całości jednym poleceniem: backend, ML, frontend, baza.
+
+Monitoring – np. Prometheus + Grafana do metryk.
+
+Logowanie – do plików lub centralnie (ELK Stack).
+
+CI/CD – automatyzacja buildów, testów i wdrożeń (np. GitHub Actions, GitLab CI, Jenkins).
+
+5. Analiza danych i predykcje – Jupyter/Streamlit jako narzędzia data scientistów
+Jupyter – super do eksploracji danych i prototypowania ML, ale nie na frontend produkcyjny.
+
+Streamlit – zostawić sobie do „eksploracji offline”.
+
+6. Dalsza skalowalność
+Jak projekt będzie rósł:
+
+Podział na mikroserwisy: osobny serwis od scoringu ML, od raportów, od API do userów itp.
+
+Możesz użyć kolejki (np. RabbitMQ/Celery) jak będziesz miał dużo zadań w tle (np. batch scoring, generowanie raportów dla userów).
+
+Cache: Redis, jeśli są drogie obliczenia albo wiele zapytań.
+
+
+
+
+
+Przykładowy nowoczesny stack na przyszłość
+Frontend: React (Next.js) albo Vue/Svelte + Chart.js, recharts, d3.js.
+
+Backend API: FastAPI (REST) + JWT
+
+ML Service: FastAPI/Flask/pyTorch/TensorFlow w osobnym kontenerze
+
+Baza danych: PostgreSQL
+
+CI/CD: GitHub Actions/GitLab CI
+
+Monitorowanie: Prometheus + Grafana
+
+Wszystko spięte docker-compose
+
+Opcjonalnie: nginx jako reverse proxy, Cloudflare (ochrona/SSL)
+

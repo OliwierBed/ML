@@ -1,0 +1,72 @@
+Katalog api/ odpowiada za wystawienie REST API umożliwia frontendowi (np. dashboardowi w Streamlit lub aplikacji webowej) oraz innym serwisom dostęp do przetworzonych danych, wyników backtestów i do zarządzania strategiami.
+
+1. __init__.py
+Opis: Plik inicjalizujący – sprawia, że katalog jest rozpoznawany jako moduł Pythona.
+
+Funkcja: Często pusty lub z podstawowymi importami.
+
+Korzysta z: Brak (tylko rola inicjalizacyjna).
+
+2. main.py
+Opis: Główny plik uruchamiający serwer API.
+
+Funkcje:
+
+Inicjalizuje aplikację FastAPI.
+
+Definiuje główne endpointy HTTP, np. /tickers, /intervals, /strategies, /results, itp.
+
+Importuje i montuje inne moduły (np. crud, models).
+
+Z jakich plików korzysta:
+
+Zwykle importuje crud.py, models.py i pomocnicze funkcje (np. z backtestu).
+
+Może korzystać z narzędzi do ładowania/wysyłania danych (np. pandas, os).
+
+Efekt:
+
+Udostępnia backendową logikę Twojej aplikacji jako API.
+
+Odpowiada na żądania z frontu (np. dashboardu w Streamlit).
+
+3. crud.py
+Opis: Logika CRUD (Create, Read, Update, Delete) dla zasobów dostępnych przez API.
+
+Funkcje:
+
+Definiuje operacje na danych, np. pobieranie listy tickerów, interwałów, strategii, metryk, wgrywanie nowych wyników, itp.
+
+Odpowiada za operacje na danych lokalnych (np. plikach CSV, katalogach z wynikami, plikach konfiguracyjnych).
+
+Z jakich plików korzysta:
+
+Importuje struktury/modelki z models.py.
+
+Może wykorzystywać funkcje z utils.py w backtest (np. do ładowania plików).
+
+Efekt:
+
+Umożliwia backendowi wykonywanie operacji na danych i zwracanie odpowiedzi do main.py.
+
+Przykład: funkcja, która zwraca listę dostępnych strategii na podstawie plików w katalogu.
+
+4. models.py
+Opis: Definicje struktur danych (modeli) używanych przez API.
+
+Funkcje:
+
+Zawiera klasy Pydantic lub dataclasses opisujące, jak wyglądają obiekty zwracane/przyjmowane przez API (np. Ticker, Strategy, BacktestResult, itp.).
+
+Dzięki temu masz walidację danych wejściowych/wyjściowych w endpointach.
+
+Z jakich plików korzysta:
+
+Może importować typy z Pythona (str, int, float, list, datetime).
+
+Używany przez crud.py i main.py do walidacji odpowiedzi.
+
+Efekt:
+
+Standaryzuje format odpowiedzi API – np. zawsze zwracasz dict z określonymi polami zamiast “gołych” danych.
+

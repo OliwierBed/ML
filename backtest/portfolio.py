@@ -1,56 +1,54 @@
+import os
+import glob
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-from sklearn.metrics import classification_report
+from backtest.rules import get_strategy
+from backtest.portfolio import BacktestEngine
+from backtest.evaluate import evaluate_backtest
+import yaml
 
-class BacktestEngine:
-    def __init__(self, data: pd.DataFrame):
-        self.data = data.copy()
-        self.data.columns = [col.lower() for col in self.data.columns]
+with open("config/config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-    def run(self):
-        self._prepare_positions()
-        self._calculate_returns()
-        self._calculate_equity_curve()
-        self._calculate_metrics()
-        return self.results
+data_dir = config["paths"]["feature_store_processed"]
+results_dir = config["paths"]["results"]
+strategies = config["backtest"]["strategies"]
+initial_cash = config["backtest"]["initial_cash"]
 
-    def _prepare_positions(self):
-        self.data["position"] = self.data["signal"].replace(0, pd.NA).ffill().fillna(0)
+print(f">>\n📁 Używam katalogu z danymi: {data_dir}")
+print(f"🧠 Strategie: {strategies}\n")
 
-    def _calculate_returns(self):
-        self.data["strategy_returns"] = self.data["Close"].pct_change().fillna(0) * self.data["position"]
-        self.data["equity_curve"] = (1 + self.data["strategy_returns"]).cumprod() * self.initial_cash
+os.makedirs(results_dir, exist_ok=True)
+results = []
 
-        # Buy & Hold
-        self.data["bh_returns"] = self.data["Close"].pct_change().fillna(0)
-        self.data["bh_equity_curve"] = (1 + self.data["bh_returns"]).cumprod() * self.initial_cash
+for filepath in glob.glob(os.path.join(data_dir, "*.csv")):
+    df = pd.read_csv(filepath, sep=";")
+    filename = os.path.basename(filepath)
 
-    def _calculate_metrics(self):
-        returns = self.data["strategy_returns"]
-        bh_returns = self.data["bh_returns"]
+    for strategy_name in strategies:
+        print(f"🔁 Przetwarzam: {filename} [{strategy_name}]")
+        try:
+            StrategyClass = get_strategy(strategy_name)
+            strategy = StrategyClass(df)
+            df_signals = strategy.generate_signals()
 
-        sharpe = returns.mean() / returns.std() * np.sqrt(252) if returns.std() != 0 else 0
-        sortino = returns.mean() / returns[returns < 0].std() * np.sqrt(252) if returns[returns < 0].std() != 0 else 0
-        max_drawdown = (self.data["equity_curve"] / self.data["equity_curve"].cummax() - 1).min()
+            bt = BacktestEngine(df_signals, initial_cash=initial_cash)
+            result_df = bt.run()
+            metrics = evaluate_backtest(result_df, initial_cash)
 
-        win_rate = (self.data["strategy_returns"] > 0).sum() / len(self.data)
+            interval = filename.split("_")[1]
+            results.append({
+                **metrics,
+                "filename": filename,
+                "interval": interval,
+                "strategy": strategy_name,
+            })
 
-        self.results = {
-            "sharpe": round(sharpe, 6),
-            "sortino": round(sortino, 6),
-            "max_drawdown": round(max_drawdown, 6),
-            "win_rate": round(win_rate, 6),
-            "cagr": np.nan,
-            "mar": np.nan,
-            "final_equity": self.data["equity_curve"].iloc[-1],
-        }
+        except Exception as e:
+            print(f"❌ Błąd przy pliku {filename} [{strategy_name}]: {e}")
 
-    def plot(self, filename="strategia"):
-        self.data[["equity_curve", "bh_equity_curve"]].plot(figsize=(10, 6))
-        plt.title(f"Equity curve – {filename} (strategia vs. buy&hold)")
-        plt.xlabel("Date")
-        plt.ylabel("Portfolio value ($)")
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
+results_df = pd.DataFrame(results)
+results_df = results_df.sort_values(by="sharpe", ascending=False)
+results_path = os.path.join(results_dir, "batch_results.csv")
+results_df.to_csv(results_path, index=False)
+
+print(f"\n📊 Wyniki zbiorcze zapisane do: {results_path}")

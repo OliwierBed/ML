@@ -8,8 +8,8 @@ project:
   timezone: "Europe/Warsaw"
 
 data:
-  tickers: ["AAPL", "MSFT"]
-  intervals: ["1d"]
+  tickers: ["AAPL", "MSFT", "TSLA"]
+  intervals: ["1h", "1d", "1wk"]
   start_date: "2018-01-01"
   end_date: "2024-12-31"
 
@@ -19,9 +19,14 @@ features:
   sentiment: false
 
 paths:
-  feature_store: "data-pipelines/feature_store"
-  logs: "logs"
+  feature_store_processed: "data-pipelines/feature_store/data/processed"
+  results: "data-pipelines/feature_store/data/results"
 
 backtest:
-  initial_cash: 100000
-  fees: 0.0005
+  initial_cash: 10000.0
+  strategies:
+    - macd
+    - rsi
+    - sma
+    - ema
+    - bollinger

@@ -27,13 +27,13 @@ def load_processed_csv(path: str) -> pd.DataFrame:
     """
     Wczytuje CSV z kolumną Date; usuwa strefę czasową (tz) by matplotlib nie wariował
     """
-    df = pd.read_csv(path, sep=";", parse_dates=["Date"])
+    df = pd.read_csv(path, sep=";", parse_dates=["date"])
     # jeśli już ma tz, rzućmy na naive
-    if hasattr(df["Date"].dt, "tz_localize"):
+    if hasattr(df["date"].dt, "tz_localize"):
         try:
-            df["Date"] = df["Date"].dt.tz_localize(None)
+            df["date"] = df["date"].dt.tz_localize(None)
         except TypeError:
             # już jest naive
             pass
-    df.set_index("Date", inplace=True)
+    df.set_index("date", inplace=True)
     return df

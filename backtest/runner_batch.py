@@ -1,56 +1,73 @@
 import os
 import pandas as pd
+from pathlib import Path
+from tqdm import tqdm
+import yaml
+
+from backtest.rules import get_strategy
 from backtest.portfolio import BacktestEngine
+from backtest.evaluate import evaluate_backtest
 
-# 👉 Możliwe do przeniesienia później do config.yaml
-TICKERS = ["AAPL", "MSFT", "TSLA"]
-INTERVALS = ["1h", "1d", "1wk"]
-PROCESSED_DIR = "data-pipelines/feature_stores/data/processed"
+CONFIG_PATH = "config/config.yaml"
 
-results = []
+def load_config(path):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
 
-for filename in os.listdir(PROCESSED_DIR):
-    if not filename.endswith(".csv"):
-        continue
+def load_processed_csv(path):
+    df = pd.read_csv(path, sep=";", parse_dates=["date"])
+    df.columns = [col.lower() for col in df.columns]
+    return df
 
-    if not any(ticker in filename for ticker in TICKERS):
-        continue
+def save_metrics(metrics: dict, save_path: Path):
+    df = pd.DataFrame([metrics])
+    df.to_csv(save_path, sep=";", index=False)
 
-    if not any(interval in filename for interval in INTERVALS):
-        continue
+def main():
+    config = load_config(CONFIG_PATH)
 
-    print(f"🔁 Przetwarzam: {filename}")
-    path = os.path.join(PROCESSED_DIR, filename)
+    processed_path = Path(config["paths"]["feature_store_processed"])
+    results_path = Path(config["paths"]["results"])
+    results_path.mkdir(parents=True, exist_ok=True)
 
-    try:
-        df = pd.read_csv(path, sep=";")
-        df.columns = [col.lower() for col in df.columns]
+    strategies = config["backtest"]["strategies"]
+    initial_cash = config["backtest"]["initial_cash"]
 
-        # 🧠 Znajdź i przekształć kolumnę daty
-        date_col = next((col for col in df.columns if "date" in col), None)
-        if date_col is None:
-            raise ValueError("Brak kolumny daty")
+    print(f"📁 Używam katalogu z danymi: {processed_path}")
+    print(f"🧠 Strategie: {strategies}")
 
-        df[date_col] = pd.to_datetime(df[date_col])
-        df.set_index(date_col, inplace=True)
+    csv_files = list(processed_path.glob("*.csv"))
+    if not csv_files:
+        print("⚠️ Nie znaleziono żadnych plików CSV.")
+        return
 
-        if "signal" not in df.columns:
-            print(f"⚠️  Pominięto {filename} – brak kolumny 'signal'")
-            continue
+    for file in tqdm(csv_files, desc="🔄 Przetwarzanie plików"):
+        ticker = file.name.split("_")[0]
+        timeframe = file.name.split("_")[1]
 
-        bt = BacktestEngine(df)
-        stats = bt.run()
-        stats["filename"] = filename
-        stats["interval"] = next((i for i in INTERVALS if i in filename), "N/A")
-        results.append(stats)
+        for strategy_name in strategies:
+            try:
+                df = load_processed_csv(file)
+                strategy = get_strategy(strategy_name, df)
+                strategy.generate_signals()
 
-    except Exception as e:
-        print(f"❌ Błąd przy pliku {filename}: {e}")
+                engine = BacktestEngine(
+                    df=df,
+                    signal_column="signal",
+                    initial_cash=initial_cash
+                )
+                engine.run()
 
-if results:
-    summary = pd.DataFrame(results)
-    summary = summary.sort_values(by="sharpe", ascending=False)
-    print("\n📊 Wyniki zbiorcze (posortowane po Sharpe):")
-    print(summary.to_string(index=False))
-else:
-    print("⚠️  Nie znaleziono żadnych prawidłowych plików do przetworzenia.")
+                metrics = evaluate_backtest(engine)
+
+                output_filename = f"{ticker}_{timeframe}_{strategy_name}_metrics.csv"
+                save_path = results_path / output_filename
+                save_metrics(metrics, save_path)
+
+                print(f"✅ Zapisano wyniki: {save_path.name}")
+
+            except Exception as e:
+                print(f"❌ Błąd przy pliku {file.name} [{strategy_name}]: {e}")
+
+if __name__ == "__main__":
+    main()

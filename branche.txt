@@ -1,0 +1,69 @@
+# ✅ Instrukcja pracy z gałęziami: master i test
+
+# 1. Utworzenie nowej gałęzi testowej i przełączenie się na nią
+git checkout -b test
+
+# 2. Praca na gałęzi test (dodawanie, commitowanie, wypychanie zmian)
+git add .
+git commit -m "Opis zmian"
+git push -u origin test   # tylko przy pierwszym pushu, potem samo: git push
+
+# 3. Przełączenie się z powrotem na gałąź master
+git checkout master
+
+# 4. Pobranie najnowszych zmian z GitHuba (jeśli były zmiany)
+git pull
+
+# 5. Przełączenie się z powrotem na test
+git checkout test
+
+# 6. Aktualizacja gałęzi test o zmiany z master (jeśli master był aktualizowany)
+git merge master
+
+# 7. Wysyłanie gotowych testowych zmian na GitHuba
+git push
+
+# 8. (Opcjonalnie) Po zakończeniu pracy można zmergować test do master
+git checkout master
+git merge test
+git push
+
+# 9. Usunięcie gałęzi test (jeśli niepotrzebna)
+git branch -d test        # lokalnie
+git push origin --delete test   # z GitHuba
+
+# 10. Zobacz dostępne gałęzie
+git branch          # tylko lokalne
+git branch -a       # lokalne + zdalne
+
+# 11. Przełącz się na konkretną gałąź
+git checkout nazwa-galezi
+
+# 12. Zobacz historię commitów (najważniejsze ID commitów)
+git log --oneline
+
+# 13. Cofnij się do wcześniejszego commita (tryb tylko do podglądu/testu)
+git checkout <commit_id>
+
+# 14. Utwórz nową gałąź z tej starej wersji (np. do naprawy/testu)
+git checkout -b napraw-z-tej-wersji
+
+# 15. Jeśli spartolisz coś na aktualnym branchu — możesz go zresetować
+
+# ❗ Uwaga: Reset cofa zmiany – używaj ostrożnie
+
+# a) Cofnij branch do konkretnego commita (usunie zmiany!)
+git reset --hard <commit_id>
+
+# b) Cofnij commit ale zachowaj pliki jako zmodyfikowane
+git reset --soft <commit_id>
+
+# 16. Porównaj różnice między dwiema gałęziami
+git diff master..test
+
+# 17. Przywróć plik do ostatniego stanu z repo (jeśli zmiany są złe)
+git checkout -- nazwa_pliku.py
+
+# 18. (Opcjonalnie) Utwórz tag do oznaczenia wersji (np. wersja stabilna)
+git tag v1.0
+git push origin v1.0

@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DB_USER:-ml}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ml_password}
+      POSTGRES_DB: ${DB_NAME:-ml}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ml} -d ${DB_NAME:-ml}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  dbdata:

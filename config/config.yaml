@@ -1,0 +1,27 @@
+# config/config.yaml
+defaults:
+  - db: postgres
+
+# ogólne ustawienia projektu
+project:
+  name: ml-trading-bot
+  timezone: "Europe/Warsaw"
+
+data:
+  tickers: ["AAPL", "MSFT"]
+  intervals: ["1d"]
+  start_date: "2018-01-01"
+  end_date: "2024-12-31"
+
+features:
+  technical: true
+  fundamental: false
+  sentiment: false
+
+paths:
+  feature_store: "data-pipelines/feature_store"
+  logs: "logs"
+
+backtest:
+  initial_cash: 100000
+  fees: 0.0005

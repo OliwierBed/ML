@@ -19,5 +19,6 @@ CMD python data-pipelines/fetchers/download_data.py && \
     python -m backtest.score_strategies && \
     python -m backtest.ensemble && \
     python prepare_full_ensemble.py && \
+    python backtest/score_ensemble.py && \
     uvicorn api.main:app --host 0.0.0.0 --port 8000 & \
     streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0

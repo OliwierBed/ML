@@ -1,7 +1,20 @@
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt  
-python fetchers/download_data.py
-python scripts/preprocessors/tech_indicators.py --tickers AAPL,MSFT,TSLA --intervals "1d,1h,1wk"
-python scripts/store_to_db.py
-uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+# ML Trading Bot – Docker Quick Start
+
+## Wymagania
+- Docker Desktop: https://www.docker.com/products/docker-desktop/
+
+## Instalacja i uruchomienie
+
+## Instalacja i uruchomienie
+
+#1. Pobierz repozytorium:
+#bash
+git clone https://github.com/OliwierBed/ML.git
+
+cd ML
+docker build -t ml-trading-bot .
+docker run -p 8501:8501 -p 8000:8000 ml-trading-bot
+
+
+Streamlit frontend: http://localhost:8501
+FastAPI backend: http://localhost:8000

@@ -1,0 +1,12 @@
+numpy
+pandas
+scikit-learn
+yfinance
+ta
+matplotlib
+omegaconf
+fastapi
+uvicorn
+streamlit
+requests
+tqdm

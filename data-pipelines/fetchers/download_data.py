@@ -18,7 +18,6 @@ def download_data(
     tickers=None, intervals=None, days=730, days_1h=60, retries=3, proxy=None, raw_data_dir=None
 ):
     config = load_config()
-    # Pobierz ścieżkę zapisu surowych danych z configa jeśli nie podano
     if raw_data_dir is None:
         raw_data_dir = config["data"].get("raw_data_dir", "data-pipelines/feature_stores/data/raw")
     if tickers is None:
@@ -26,12 +25,10 @@ def download_data(
     if intervals is None:
         intervals = config["data"].get("intervals", ["1d", "1h", "1wk"])
 
-    # Ustaw proxy, jeśli podano
     if proxy:
         yf.set_config(proxy=proxy)
         logging.info(f"Using proxy: {proxy}")
     
-    # Ustaw daty
     end_date = datetime.now().strftime("%Y-%m-%d")
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     start_date_1h = (datetime.now() - timedelta(days=days_1h)).strftime("%Y-%m-%d")
@@ -56,14 +53,13 @@ def download_data(
                     
                     if not df.empty:
                         df = df.reset_index()
-                        # Spłaszcz multi-indeks, jeśli istnieje
                         if isinstance(df.columns, pd.MultiIndex):
                             df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
                         if 'Date' not in df.columns and 'Datetime' in df.columns:
                             df.rename(columns={'Datetime': 'Date'}, inplace=True)
                         elif 'Date' not in df.columns:
                             df['Date'] = pd.to_datetime(df.index)
-                        # Konwersja kolumn numerycznych
+
                         numeric_cols = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
                         for col in numeric_cols:
                             if col in df.columns:
@@ -87,11 +83,11 @@ def download_data(
                 except Exception as e:
                     logging.error(f"Nie udało się pobrać danych dla {ticker} ({interval}) w próbie {attempt + 1}: {e}")
                     if attempt < retries - 1:
-                        logging.info("Czekam 30 sekund przed kolejną próbą...")
-                        time.sleep(30)
+                        logging.info("Retry za chwilę...")
+                        time.sleep(0.2)  # minimalne opóźnienie
                     else:
                         logging.error(f"Rezygnuję po {retries} próbach dla {ticker} ({interval})")
-        time.sleep(60)  # Opóźnienie między tickerami
+        # time.sleep(1)  # <- usunięte opóźnienie między tickerami
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download stock data")

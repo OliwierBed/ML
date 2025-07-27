@@ -1,8 +1,4 @@
 # config/config.yaml
-defaults:
-  - db: postgres
-
-# ogólne ustawienia projektu
 project:
   name: ml-trading-bot
   timezone: "Europe/Warsaw"
@@ -10,23 +6,21 @@ project:
 data:
   tickers: ["AAPL", "MSFT", "TSLA"]
   intervals: ["1h", "1d", "1wk"]
-  start_date: "2018-01-01"
-  end_date: "2024-12-31"
-
-features:
-  technical: true
-  fundamental: false
-  sentiment: false
 
 paths:
-  feature_store_processed: "data-pipelines/feature_store/data/processed"
-  results: "data-pipelines/feature_store/data/results"
+  feature_stores_processed: "data-pipelines/feature_stores/data/processed"
+  results: "data-pipelines/feature_stores/data/results"
 
 backtest:
-  initial_cash: 10000.0
+  initial_cash: 100000
   strategies:
     - macd
     - rsi
     - sma
     - ema
     - bollinger
+
+scoring:
+  top_n: 20
+  metric: "sharpe"   # możesz zmienić np. na: sortino, mar, cagr (pamiętaj żeby kolumna istniała)
+  direction: "desc"  # "desc" dla metryk gdzie więcej = lepiej (Sharpe, CAGR, Sortino, MAR)

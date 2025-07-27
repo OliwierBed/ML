@@ -1,39 +1,41 @@
 # backtest/utils.py
 import os
-import re
 import pandas as pd
 
+INTERVALS = ["1h", "1d", "1wk"]
 
-INTERVAL_TO_AF = {
-    "1h": 252 * 6.5,   # uproszczenie; dla krypto możesz dać 24*365
-    "1d": 252,
-    "1wk": 52,
-}
+def load_processed_csv_lower(path: str) -> pd.DataFrame:
+    """
+    Wczytuje csv, zamienia nazwy kolumn na lowercase, wykrywa kolumnę daty.
+    """
+    df = pd.read_csv(path, sep=";")
+    df.columns = [c.lower() for c in df.columns]
+
+    # Szukamy kolumny z datą
+    date_col = None
+    for cand in ("date", "datetime", "ts"):
+        if cand in df.columns:
+            date_col = cand
+            break
+
+    if date_col is not None:
+        df[date_col] = pd.to_datetime(df[date_col])
+        df = df.set_index(date_col).sort_index()
+
+    return df
 
 
 def infer_interval_from_filename(filename: str) -> str:
-    """
-    Próbujemy wyciągnąć interwał z nazwy pliku, np. AAPL_1h_2025....csv -> 1h
-    """
-    m = re.search(r"_(1h|1d|1wk)_", filename)
-    return m.group(1) if m else "1d"
+    for itv in INTERVALS:
+        # najpewniej w formacie _1h_ / _1d_ / _1wk_
+        if f"_{itv}_" in filename:
+            return itv
+    return "1d"
 
 
-def annualization_factor_from_interval(interval: str) -> float:
-    return INTERVAL_TO_AF.get(interval, 252)
-
-
-def load_processed_csv(path: str) -> pd.DataFrame:
-    """
-    Wczytuje CSV z kolumną Date; usuwa strefę czasową (tz) by matplotlib nie wariował
-    """
-    df = pd.read_csv(path, sep=";", parse_dates=["date"])
-    # jeśli już ma tz, rzućmy na naive
-    if hasattr(df["date"].dt, "tz_localize"):
-        try:
-            df["date"] = df["date"].dt.tz_localize(None)
-        except TypeError:
-            # już jest naive
-            pass
-    df.set_index("date", inplace=True)
-    return df
+def annualization_factor_from_interval(interval: str) -> int:
+    return {
+        "1h": 24 * 252,
+        "1d": 252,
+        "1wk": 52,
+    }.get(interval, 252)

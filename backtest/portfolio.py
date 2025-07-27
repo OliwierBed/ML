@@ -1,54 +1,35 @@
-import os
-import glob
+# backtest/portfolio.py
 import pandas as pd
-from backtest.rules import get_strategy
-from backtest.portfolio import BacktestEngine
+import numpy as np
+
 from backtest.evaluate import evaluate_backtest
-import yaml
 
-with open("config/config.yaml", "r") as f:
-    config = yaml.safe_load(f)
+class BacktestEngine:
+    def __init__(self, data: pd.DataFrame, initial_cash: float, annualization_factor: int):
+        self.data = data.copy()
+        self.initial_cash = initial_cash
+        self.af = annualization_factor
+        if "close" not in self.data.columns:
+            raise ValueError("Brak kolumny 'close' w danych!")
 
-data_dir = config["paths"]["feature_store_processed"]
-results_dir = config["paths"]["results"]
-strategies = config["backtest"]["strategies"]
-initial_cash = config["backtest"]["initial_cash"]
+    def run(self, signal_col: str = "signal"):
+        if signal_col not in self.data.columns:
+            raise ValueError(f"Brak kolumny '{signal_col}' w danych!")
 
-print(f">>\n📁 Używam katalogu z danymi: {data_dir}")
-print(f"🧠 Strategie: {strategies}\n")
+        # pozycja (1, -1, 0) – wypełniamy 0 -> ffillem, żeby utrzymać pozycję
+        position = self.data[signal_col].replace(0, np.nan).ffill().fillna(0)
+        ret = self.data["close"].pct_change().fillna(0)
 
-os.makedirs(results_dir, exist_ok=True)
-results = []
+        # strategia używa pozycji z poprzedniej świecy
+        strat_ret = ret * position.shift(1).fillna(0)
 
-for filepath in glob.glob(os.path.join(data_dir, "*.csv")):
-    df = pd.read_csv(filepath, sep=";")
-    filename = os.path.basename(filepath)
+        equity_curve = (1 + strat_ret).cumprod() * self.initial_cash
+        bh_equity_curve = (1 + ret).cumprod() * self.initial_cash
 
-    for strategy_name in strategies:
-        print(f"🔁 Przetwarzam: {filename} [{strategy_name}]")
-        try:
-            StrategyClass = get_strategy(strategy_name)
-            strategy = StrategyClass(df)
-            df_signals = strategy.generate_signals()
+        self.data["position"] = position
+        self.data["strategy_returns"] = strat_ret
+        self.data["equity_curve"] = equity_curve
+        self.data["bh_equity_curve"] = bh_equity_curve
 
-            bt = BacktestEngine(df_signals, initial_cash=initial_cash)
-            result_df = bt.run()
-            metrics = evaluate_backtest(result_df, initial_cash)
-
-            interval = filename.split("_")[1]
-            results.append({
-                **metrics,
-                "filename": filename,
-                "interval": interval,
-                "strategy": strategy_name,
-            })
-
-        except Exception as e:
-            print(f"❌ Błąd przy pliku {filename} [{strategy_name}]: {e}")
-
-results_df = pd.DataFrame(results)
-results_df = results_df.sort_values(by="sharpe", ascending=False)
-results_path = os.path.join(results_dir, "batch_results.csv")
-results_df.to_csv(results_path, index=False)
-
-print(f"\n📊 Wyniki zbiorcze zapisane do: {results_path}")
+        metrics = evaluate_backtest(strat_ret, equity_curve, self.af)
+        return self.data, metrics

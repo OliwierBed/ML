@@ -1,3 +1,7 @@
+from fastapi import APIRouter
+
+router = APIRouter()
+
 from ml.inference.service import lstm_forecast_service
 
 @router.get("/forecast")

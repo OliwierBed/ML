@@ -157,3 +157,17 @@ if st.button("Wygeneruj predykcję LSTM"):
         ).reset_index(drop=True))
     except Exception as e:
         st.error(f"Błąd podczas predykcji: {str(e)}")
+
+    st.header("📈 Predykcja LSTM")
+    if st.button("Wygeneruj predykcję LSTM"):
+        try:
+            resp = requests.get(
+                f"{API_URL}/ml/forecast",
+                params={"ticker": ticker, "interval": interval, "n_steps": 100}
+            )
+            resp.raise_for_status()
+            out = resp.json()
+            st.success("Gotowe!")
+            st.line_chart(out["forecast"])
+        except Exception as e:
+            st.error(f"Błąd podczas predykcji: {e}")

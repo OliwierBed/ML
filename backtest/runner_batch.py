@@ -54,7 +54,10 @@ def main():
                     raise ValueError("Brak kolumny 'close' w danych!")
 
                 StratCls = get_strategy(strategy_name)
-                strategy = StratCls(df)
+                if strategy_name == "lstm":
+                    strategy = StratCls(df, ticker=ticker, interval=interval)
+                else:
+                    strategy = StratCls(df)
                 signals = strategy.generate_signals()
 
                 # merge sygnałów do df

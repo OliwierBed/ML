@@ -3,8 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
 from functools import reduce
+from api.routers import ml
 
 app = FastAPI(title="TradingBot API")
+
+app.include_router(ml.router)
 
 app.add_middleware(
     CORSMiddleware,

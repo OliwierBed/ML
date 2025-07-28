@@ -12,6 +12,8 @@ data:
 paths:
   feature_stores_processed: "data-pipelines/feature_stores/data/processed"
   results: "data-pipelines/feature_stores/data/results"
+  models_dir: "models"
+
 
 backtest:
   initial_cash: 100000
@@ -19,10 +21,21 @@ backtest:
     - macd
     - rsi
     - sma
-    - ema
+    - ema 
     - bollinger
+    - lstm 
 
 scoring:
   top_n: 20
   metric: "sharpe"   # możesz zmienić np. na: sortino, mar, cagr (pamiętaj żeby kolumna istniała)
   direction: "desc"  # "desc" dla metryk gdzie więcej = lepiej (Sharpe, CAGR, Sortino, MAR)
+
+ml:
+  lstm:
+    seq_len: 160
+    epochs: 25
+    batch_size: 128
+    lr: 0.001
+    hidden_dim: 128
+    num_layers: 2
+    rolling_window: 10  # 0 = wyłącz

@@ -26,4 +26,4 @@ ta
 openpyxl
 requests
 tqdm
-
+torch>=2.0.0

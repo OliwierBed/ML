@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from backtest.rules_lstm import LSTMStrategy
 
 # ============== Base ==============
 
@@ -162,6 +163,13 @@ def get_strategy(name: str):
         "ema": EMACrossStrategy,
         "bollinger": BollingerBreakoutStrategy,
     }
+
+    if name == "lstm":
+        return lambda df, **kwargs: LSTMStrategy(df, kwargs.get("ticker"), kwargs.get("interval"))
     if name not in mapping:
         raise ValueError(f"Strategia '{name}' nie jest obsługiwana. Dostępne: {list(mapping.keys())}")
     return mapping[name]
+
+
+
+    

@@ -1,102 +1,116 @@
+import argparse
 import os
 import json
-import joblib
 import torch
 import torch.nn as nn
-import pandas as pd
+from torch.utils.data import TensorDataset, DataLoader
+
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import MinMaxScaler
-from ml.models.lstm_attn import LSTMWithAttention
+from ml.models.lstm_attention import LSTMWithAttention
+from ml.data.loader import load_series
+from ml.data.features import build_features
+from ml.data.split import make_sequences, train_val_test_split
+from ml.training.metrics import rmse, mae, mape, directional_accuracy
 
-from config.load import load_config  # jak u Ciebie
-
-class StockDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = torch.tensor(X).unsqueeze(-1)  # (B, T, 1)
-        self.y = torch.tensor(y).unsqueeze(-1)  # (B, 1)
-
-    def __len__(self): return len(self.X)
-    def __getitem__(self, idx): return self.X[idx], self.y[idx]
-
-def create_sequences(data, seq_len):
-    X, y = [], []
-    for i in range(len(data) - seq_len):
-        X.append(data[i:i+seq_len])
-        y.append(data[i+seq_len])
-    return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
-
-def train_one(ticker, interval, cfg):
-    processed_dir = cfg.paths.feature_stores_processed
-    models_dir = getattr(cfg.paths, "models_dir", "models")
-    os.makedirs(models_dir, exist_ok=True)
-
-    # Bierzemy **ten sam** plik co do backtestu (np. close z processed)
-    # Możesz też osobny fetch zrobić.
-    fname = max([f for f in os.listdir(processed_dir) if f.startswith(f"{ticker}_{interval}_") and f.endswith("_indicators.csv")])
-    df = pd.read_csv(os.path.join(processed_dir, fname), sep=";")
-    df = df.rename(columns={c: c.lower() for c in df.columns})
-    close = df["close"].values.reshape(-1, 1)
-
-    seq_len = int(cfg.ml.lstm.seq_len)
-    epochs = int(cfg.ml.lstm.epochs)
-    batch_size = int(cfg.ml.lstm.batch_size)
-    lr = float(cfg.ml.lstm.lr)
-    hidden_dim = int(cfg.ml.lstm.hidden_dim)
-    num_layers = int(cfg.ml.lstm.num_layers)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    scaler = MinMaxScaler()
-    close_scaled = scaler.fit_transform(close).flatten()
-
-    # opcjonalnie smoothing (rolling mean) – zrób to konfigurowalne
-    if cfg.ml.lstm.get("rolling_window", 0) > 0:
-        w = cfg.ml.lstm.rolling_window
-        close_scaled = pd.Series(close_scaled).rolling(w).mean().dropna().values
-
-    X, y = create_sequences(close_scaled, seq_len)
-    dataset = StockDataset(X, y)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    model = LSTMWithAttention(1, hidden_dim, num_layers).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
-    crit = nn.MSELoss()
-
-    for ep in range(epochs):
-        model.train()
-        loss_sum = 0.0
-        for batch_X, batch_y in dataloader:
-            batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-            opt.zero_grad()
-            pred = model(batch_X)
-            loss = crit(pred, batch_y)
-            loss.backward()
-            opt.step()
-            loss_sum += loss.item()
-        print(f"[{ticker} {interval}] epoch {ep+1}/{epochs} loss={loss_sum/len(dataloader):.6f}")
-
-    # ZAPIS
-    model_path = os.path.join(models_dir, f"{ticker}_{interval}_lstm_attn.pt")
-    scaler_path = os.path.join(models_dir, f"{ticker}_{interval}_scaler.pkl")
-    torch.save(model.state_dict(), model_path)
-    joblib.dump(scaler, scaler_path)
-
-    meta = {
-        "ticker": ticker,
-        "interval": interval,
-        "seq_len": seq_len,
-        "input_dim": 1,
-        "hidden_dim": hidden_dim,
-        "num_layers": num_layers
-    }
-    with open(os.path.join(models_dir, f"{ticker}_{interval}_lstm_meta.json"), "w") as f:
-        json.dump(meta, f, indent=2)
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--ticker", required=True)
+    p.add_argument("--interval", required=True)
+    p.add_argument("--seq_len", type=int, default=160)
+    p.add_argument("--epochs", type=int, default=50)
+    p.add_argument("--batch_size", type=int, default=128)
+    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--hidden_dim", type=int, default=128)
+    p.add_argument("--num_layers", type=int, default=2)
+    p.add_argument("--dropout", type=float, default=0.2)
+    p.add_argument("--features", nargs="+", default=["close"])  # <- możesz tu podać np. close rsi macd itp.
+    return p.parse_args()
 
 def main():
-    cfg = load_config()
-    for t in cfg.data.tickers:
-        for itv in cfg.data.intervals:
-            train_one(t, itv, cfg)
+    args = parse_args()
+
+    df = load_series(args.ticker, args.interval)
+    X, y, sx, sy = build_features(df, feature_cols=args.features, target_col="close")
+
+    Xs, ys = make_sequences(X, y, args.seq_len)
+    Xtr, ytr, Xval, yval, Xte, yte = train_val_test_split(Xs, ys)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    train_loader = DataLoader(TensorDataset(torch.tensor(Xtr), torch.tensor(ytr)), batch_size=args.batch_size, shuffle=True)
+    val_loader   = DataLoader(TensorDataset(torch.tensor(Xval), torch.tensor(yval)), batch_size=args.batch_size, shuffle=False)
+    test_tensor  = (torch.tensor(Xte).to(device), torch.tensor(yte).to(device))
+
+    model = LSTMWithAttention(input_dim=Xs.shape[-1],
+                              hidden_dim=args.hidden_dim,
+                              num_layers=args.num_layers,
+                              dropout=args.dropout).to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    loss_fn = nn.MSELoss()
+
+    best_val = np.inf
+    best_path = f"ml/saved_models/lstm_{args.ticker}_{args.interval}.pth"
+    os.makedirs("ml/saved_models", exist_ok=True)
+
+    for epoch in range(args.epochs):
+        model.train()
+        train_loss = 0
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            opt.zero_grad()
+            pred = model(xb).squeeze()
+            loss = loss_fn(pred, yb)
+            loss.backward()
+            opt.step()
+            train_loss += loss.item()
+
+        # walidacja
+        model.eval()
+        with torch.no_grad():
+            val_loss = 0
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                pred = model(xb).squeeze()
+                val_loss += loss_fn(pred, yb).item()
+
+        print(f"[{epoch+1}/{args.epochs}] train={train_loss/len(train_loader):.4f} val={val_loss/len(val_loader):.4f}")
+
+        if val_loss < best_val:
+            best_val = val_loss
+            torch.save({
+                "state_dict": model.state_dict(),
+                "scalers": {"x": sx, "y": sy},
+                "seq_len": args.seq_len,
+                "features": args.features
+            }, best_path)
+            print(f"  ↳ zapisano: {best_path}")
+
+    # test
+    bundle = torch.load(best_path, map_location=device)
+    model.load_state_dict(bundle["state_dict"])
+    sx, sy = bundle["scalers"]["x"], bundle["scalers"]["y"]
+
+    model.eval()
+    with torch.no_grad():
+        pred = model(test_tensor[0]).squeeze().cpu().numpy()
+        true = test_tensor[1].cpu().numpy()
+
+    # odskaluj
+    pred = sy.inverse_transform(pred.reshape(-1,1)).flatten()
+    true = sy.inverse_transform(true.reshape(-1,1)).flatten()
+
+    metrics = {
+        "rmse": float(rmse(true, pred)),
+        "mae": float(mae(true, pred)),
+        "mape": float(mape(true, pred)),
+        "directional_acc": float(directional_accuracy(true, pred)),
+        "best_model_path": best_path,
+        "ticker": args.ticker,
+        "interval": args.interval
+    }
+    print(metrics)
+    with open(best_path.replace(".pth", "_metrics.json"), "w") as f:
+        json.dump(metrics, f, indent=2)
 
 if __name__ == "__main__":
     main()

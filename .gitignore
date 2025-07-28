@@ -22,3 +22,7 @@ monitor/logs/
 # IDE files
 .idea/
 .vscode/
+
+ml/runs/*
+ml/saved_models/*
+*.pth

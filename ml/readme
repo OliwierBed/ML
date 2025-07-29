@@ -1,0 +1,104 @@
+# 📁 ML Module Overview
+
+Ten katalog `ml/` odpowiada za cały proces uczenia i predykcji modeli ML (aktualnie LSTM z uwzględnieniem attention). Może być łatwo rozszerzony o dodatkowe cechy wejściowe i inne typy modeli.
+
+---
+
+## 📂 Struktura katalogu
+
+ml/
+├── inference/
+│ └── service.py # Obsługa predykcji z pliku modelu (.pth)
+├── models/
+│ └── lstm_attention.py # Architektura LSTM z Attention
+├── saved_models/
+│ └── lstm_TICKER_INTERVAL.pth # Zapisane modele
+│ └── lstm_TICKER_INTERVAL.meta.json # Metadane modelu (cechy, seq_len)
+│ └── lstm_TICKER_INTERVAL.scaler.pkl # Zapisany scaler MinMax
+├── training/
+│ └── train_lstm.py # Trening modelu LSTM
+└── README_ml.md # Ten plik
+
+## 🧠 Działanie systemu
+
+### 1. Trening (`train_lstm.py`)
+- Trenuje model LSTM na danych z `data-pipelines/feature_stores/data/raw/{ticker}_{interval}_*.csv`.
+- Dane `close` są normalizowane (domyślnie), ale można rozszerzyć o inne kolumny.
+- Zapisuje:
+  - `.pth` – model,
+  - `.scaler.pkl` – obiekt skalujący (do użycia przy predykcji),
+  - `.meta.json` – metadane (lista cech, długość sekwencji itp.).
+
+### 2. Predykcja (`service.py`)
+- Ładuje najnowszy model `.pth` + `.scaler.pkl` + `.meta.json` z `saved_models/`.
+- Pobiera dane z katalogu `raw/`, wycina ostatnie `seq_len` wartości i generuje prognozę.
+
+---
+
+## 🧩 Obsługa wielu cech (features)
+
+Domyślnie model działa tylko na `close`. Aby dodać inne cechy:
+
+1. Zmodyfikuj `train_lstm.py`:
+   - Podaj `features = ["close", "open", "rsi_14", "sma_20", ...]`
+   - Skaluj wszystkie cechy razem: `scaler.fit_transform(df[features])`
+   - `X` ma wymiar: `[n, seq_len, num_features]`
+
+2. Zmodyfikuj `service.py`:
+   - Wczytaj te same `features` z `.meta.json`
+   - Przeskaluj dane tym samym `scaler.pkl`
+
+✅ Frontend i API NIE wymagają żadnych zmian.
+
+---
+
+## 🧪 ML Developer: Twoje zadania
+
+1. **Dodawanie cech**:
+   - Analiza danych (np. korelacja, jakość, noise),
+   - Dodanie np. RSI, SMA, OBV, MACD, Stoch, itd.
+
+2. **Optymalizacja**:
+   - Dobór `seq_len`, `epochs`, `hidden_dim`, dropout, LR,
+   - Zapobieganie overfittingowi (np. przez walidację, wykresy loss).
+
+3. **Walidacja**:
+   - Porównaj przewidywane wartości z rzeczywistymi (`MAE`, `MSE`, `RMSE`),
+   - Możesz stworzyć wykresy porównawcze.
+
+4. **Modularność**:
+   - Obsługa wielu modeli (np. GRU, CNN-LSTM),
+   - Używaj `meta.json` i `scaler.pkl`, by trenować i przewidywać dowolnym zestawem cech.
+
+---
+
+## ⚙️ Skalowalność
+
+- Frontend i backend API **automatycznie** korzystają z najnowszego modelu `.pth` + `.scaler.pkl` + `.meta.json`.
+- Można łatwo trenować i przewidywać dowolny `ticker` + `interval`.
+- Wystarczy umieścić dane w `data/raw/` i wszystko działa.
+
+---
+
+## 📦 Wymagania
+
+- PyTorch
+- Pandas, NumPy, scikit-learn
+- FastAPI
+- Streamlit (frontend)
+
+---
+
+## 🧭 Przykładowe wywołania
+
+### Trening z CLI:
+```bash
+python -m ml.training.train_lstm --ticker AAPL --interval 1d --epochs 30
+
+
+
+Trening z API:
+POST /ml/train?ticker=AAPL&interval=1d&epochs=30
+
+Predykcja:
+GET /ml/forecast?ticker=AAPL&interval=1d&n_steps=100

@@ -35,8 +35,64 @@ if agg_mode == "Głosowanie (wagi)":
     st.write("Ustaw wagi dla każdej strategii:")
     weights = {s: st.slider(f"Waga: {s}", 0.0, 2.0, 1.0, 0.1) for s in selected_strategies}
 
-# ========== Agregacja strategii ==========
-if st.button("Pokaż wyniki", key="show_results_btn"):
+# ========== Sekcja: Trenowanie LSTM ==========
+st.markdown("---")
+st.subheader("🧠 Trening modelu LSTM")
+epochs = st.slider("Liczba epok:", 5, 200, 25, step=5)
+
+if st.button("🔁 Wytrenuj model LSTM", key="train_lstm_btn"):
+    try:
+        resp = requests.post(
+            f"{API_URL}/ml/train",
+            params={"ticker": ticker, "interval": interval, "epochs": epochs}
+        )
+        resp.raise_for_status()
+        st.success(f"✅ Model wytrenowany: {ticker} {interval} ({epochs} epok)")
+    except Exception as e:
+        st.error(f"❌ Błąd podczas treningu: {e}")
+
+# ========== Sekcja: Predykcja LSTM ==========
+st.markdown("---")
+st.subheader("📈 Predykcja LSTM")
+if st.button("🔮 Wygeneruj predykcję LSTM", key="lstm_forecast_btn"):
+    try:
+        resp = requests.get(
+            f"{API_URL}/ml/forecast",
+            params={"ticker": ticker, "interval": interval, "n_steps": 100}
+        )
+        resp.raise_for_status()
+        out = resp.json()
+        st.success("✅ Gotowe! Przewidziano kolejne 100 wartości.")
+        st.line_chart(out["forecast"])
+    except Exception as e:
+        st.error(f"❌ Błąd podczas predykcji: {e}")
+
+# ========== Sekcja: Predykcja + backtest ==========
+st.markdown("---")
+st.subheader("📊 Predykcja + Backtest LSTM")
+if st.button("🧪 Wygeneruj predykcję i backtest", key="lstm_backtest_btn"):
+    try:
+        resp = requests.get(
+            f"{API_URL}/ml/forecast",
+            params={"ticker": ticker, "interval": interval, "n_steps": 100}
+        )
+        resp.raise_for_status()
+        out = resp.json()
+        forecast = out["forecast"]
+        st.success("✅ Przewidywanie zakończone. Poniżej wyniki backtestu.")
+
+        # Sztuczny backtest - uproszczony do pokazania equity z predykcji
+        df = pd.DataFrame({"forecast": forecast})
+        df["pct_change"] = df["forecast"].pct_change().fillna(0)
+        df["equity"] = (1 + df["pct_change"]).cumprod()
+        st.line_chart(df["equity"])
+    except Exception as e:
+        st.error(f"❌ Błąd podczas predykcji/backtestu: {e}")
+
+# ========== Sekcja: Agregacja strategii klasycznych ==========
+st.markdown("---")
+st.subheader("📚 Agregacja strategii klasycznych")
+if st.button("📉 Pokaż wyniki strategii", key="show_results_btn"):
     # Pobierz metryki
     metrics_list = []
     for strat in selected_strategies:
@@ -94,20 +150,3 @@ if st.button("Pokaż wyniki", key="show_results_btn"):
             st.line_chart(dfeq.set_index("date")["equity"])
         else:
             st.info("Brak danych equity.")
-
-# ========== Sekcja: Predykcja LSTM ==========
-st.markdown("---")
-st.subheader("📈 Predykcja LSTM")
-
-if st.button("Wygeneruj predykcję LSTM", key="lstm_btn"):
-    try:
-        resp = requests.get(
-            f"{API_URL}/ml/forecast",
-            params={"ticker": ticker, "interval": interval, "n_steps": 100}
-        )
-        resp.raise_for_status()
-        out = resp.json()
-        st.success("Gotowe! Przewidziano kolejne 100 wartości.")
-        st.line_chart(out["forecast"])
-    except Exception as e:
-        st.error(f"Błąd podczas predykcji: {e}")

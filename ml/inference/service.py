@@ -1,24 +1,50 @@
+# ml/inference/service.py
 import os
-import numpy as np
-from ml.data.loader import load_series
-from ml.data.features import build_features
-from ml.inference.predict_lstm import load_model_bundle, forecast_next
+import torch
+import pandas as pd
+from ml.models.lstm_attention import LSTMWithAttention
+from ml.preprocessing.utils import load_lstm_data
+from sklearn.preprocessing import MinMaxScaler
 
-def lstm_forecast_service(ticker: str, interval: str, n_steps: int = 100):
-    model_path = f"ml/saved_models/lstm_{ticker}_{interval}.pth"
+MODEL_DIR = "ml/saved_models"
+SEQ_LEN = 160
+
+def lstm_forecast_service(ticker: str, interval: str, n_steps: int = 100) -> dict:
+    model_path = os.path.join(MODEL_DIR, f"lstm_{ticker}_{interval}.pth")
+    data_path = f"data-pipelines/feature_stores/data/raw/{ticker}_{interval}_*.csv"
+
+    # Znajdź najnowszy plik z danymi
+    import glob
+    files = glob.glob(data_path)
+    if not files:
+        raise FileNotFoundError(f"Brak danych dla {ticker} {interval}")
+    file_path = max(files, key=os.path.getctime)
+
+    df = pd.read_csv(file_path)
+    df = df.dropna(subset=["close"]).reset_index(drop=True)
+    df["close"] = df["close"].rolling(window=10).mean().dropna()
+
+    scaler = MinMaxScaler()
+    df["close"] = scaler.fit_transform(df[["close"]])
+    data = df["close"].values.astype("float32")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = LSTMWithAttention().to(device)
+
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Brak modelu: {model_path}. Poproś ML o trening.")
 
-    bundle = load_model_bundle(model_path, device="cpu")
-    features = bundle["features"]
-    seq_len  = bundle["seq_len"]
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
 
-    df = load_series(ticker, interval)
-    X, y, sx, sy = build_features(df, feature_cols=features, target_col="close")
-    Xs = []
-    for i in range(len(X) - seq_len):
-        Xs.append(X[i:i+seq_len])
-    last_seq = Xs[-1]  # (seq_len, n_features)
+    forecast_input = torch.tensor(data[-SEQ_LEN:], dtype=torch.float32).unsqueeze(0).unsqueeze(-1).to(device)
+    forecast = []
 
-    preds = forecast_next(bundle, last_seq, n_steps=n_steps, device="cpu")
-    return preds.tolist()
+    with torch.no_grad():
+        for _ in range(n_steps):
+            pred = model(forecast_input)
+            forecast.append(pred.item())
+            forecast_input = torch.cat((forecast_input[:, 1:, :], pred.unsqueeze(1)), dim=1)
+
+    forecast_rescaled = scaler.inverse_transform(pd.DataFrame(forecast))
+    return {"forecast": forecast_rescaled.flatten().tolist()}

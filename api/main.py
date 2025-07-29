@@ -7,7 +7,7 @@ from api.routers import ml
 
 app = FastAPI(title="TradingBot API")
 
-app.include_router(ml.router)
+app.include_router(ml.router, prefix="/ml")
 
 app.add_middleware(
     CORSMiddleware,

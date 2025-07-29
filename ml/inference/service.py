@@ -13,6 +13,41 @@ MODEL_DIR = "ml/saved_models"
 SEQ_LEN = 160
 
 
+def load_model_bundle(ticker: str, interval: str):
+    """
+    Wczytuje model i scaler na podstawie tickera i interwału.
+    """
+    model_path = os.path.join(MODEL_DIR, f"{ticker}_{interval}.pth")
+    scaler_path = os.path.join(MODEL_DIR, f"{ticker}_{interval}_scaler.npy")
+
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Brak modelu: {model_path}")
+    if not os.path.exists(scaler_path):
+        raise FileNotFoundError(f"Brak scalera: {scaler_path}")
+
+    model = LSTMAttentionModel(input_size=1, hidden_size=64, num_layers=2)
+    model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
+    model.eval()
+
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaler.min_, scaler.scale_ = np.load(scaler_path, allow_pickle=True)
+
+    return model, scaler
+
+def forecast_next(model, scaler, data: pd.DataFrame, column: str = "close") -> float:
+    """
+    Wykonuje predykcję kolejnej wartości na podstawie ostatnich danych.
+    """
+    sequence = data[column].values[-SEQUENCE_LENGTH:]
+    sequence_scaled = scaler.transform(sequence.reshape(-1, 1))
+    sequence_scaled = torch.tensor(sequence_scaled.reshape(1, SEQUENCE_LENGTH, 1)).float()
+
+    with torch.no_grad():
+        prediction = model(sequence_scaled).numpy().flatten()[0]
+
+    return scaler.inverse_transform([[prediction]])[0][0]
+
+
 def _latest_raw_csv(ticker: str, interval: str) -> str:
     pattern = f"data-pipelines/feature_stores/data/raw/{ticker}_{interval}_*.csv"
     files = glob.glob(pattern)

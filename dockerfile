@@ -15,7 +15,6 @@ ENV PYTHONPATH=/app
 
 CMD python data-pipelines/fetchers/download_data.py && \
     python data-pipelines/preprocessors/tech_indicators.py && \
-    python -m ml.training.train_lstm && \
     python -m backtest.runner_batch && \
     python -m backtest.score_strategies && \
     python -m backtest.ensemble && \

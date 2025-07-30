@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: trading
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    container_name: ml_trading_web
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:password@db:5432/trading
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:

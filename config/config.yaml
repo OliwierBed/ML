@@ -39,3 +39,6 @@ ml:
     hidden_dim: 128
     num_layers: 2
     rolling_window: 10  # 0 = wyłącz
+
+database:
+  url: postgresql+psycopg2://user:password@db:5432/trading

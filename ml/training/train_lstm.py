@@ -7,20 +7,12 @@ from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Dataset, DataLoader
 
 from ml.models.lstm_attention import LSTMWithAttention
+from db.utils.load_from_db import load_data_from_db
 
 MODEL_DIR = "ml/saved_models"
 SEQ_LEN = 160
 BATCH_SIZE = 128
 LR = 1e-3
-
-
-def _latest_raw_csv(ticker: str, interval: str) -> str:
-    pattern = f"data-pipelines/feature_stores/data/raw/{ticker}_{interval}_*.csv"
-    files = glob.glob(pattern)
-    if not files:
-        raise FileNotFoundError(f"Nie znaleziono danych raw dla wzorca: {pattern}")
-    return max(files, key=os.path.getctime)
-
 
 def _to_supervised(series: np.ndarray, seq_len: int):
     X, y = [], []
@@ -30,7 +22,6 @@ def _to_supervised(series: np.ndarray, seq_len: int):
     X = np.array(X, dtype=np.float32)
     y = np.array(y, dtype=np.float32)
     return X, y
-
 
 class SeqDataset(Dataset):
     def __init__(self, X, y):
@@ -43,16 +34,14 @@ class SeqDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-
 def train_lstm_model(ticker: str, interval: str, epochs: int = 25, seq_len: int = SEQ_LEN):
     os.makedirs(MODEL_DIR, exist_ok=True)
-    csv_path = _latest_raw_csv(ticker, interval)
 
-    df = pd.read_csv(csv_path, sep=";")
+    df = load_data_from_db(ticker=ticker, interval=interval, columns=["close"])
     df.columns = df.columns.str.lower()
 
     if "close" not in df.columns:
-        raise ValueError(f"Brak kolumny 'close' w pliku: {csv_path}")
+        raise ValueError(f"Brak kolumny 'close' w danych z bazy dla: {ticker} {interval}")
 
     df = df.dropna(subset=["close"]).reset_index(drop=True)
     df["close"] = df["close"].rolling(window=10).mean()
@@ -95,7 +84,6 @@ def train_lstm_model(ticker: str, interval: str, epochs: int = 25, seq_len: int 
     model_path = os.path.join(MODEL_DIR, f"lstm_{ticker}_{interval}.pth")
     torch.save(model.state_dict(), model_path)
     print(f"✅ Zapisano model do: {model_path}")
-
 
 if __name__ == "__main__":
     import argparse

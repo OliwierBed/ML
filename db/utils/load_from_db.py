@@ -19,25 +19,23 @@ db_url = URL.create(
 engine = create_engine(db_url)
 
 # 🔍 Funkcja do wczytywania danych z bazy
-def load_data_from_db(ticker: str, interval: str, source: str = "processed", strategy: str = None):
-    query = """
-        SELECT * FROM candles
-        WHERE ticker = %(ticker)s
-        AND interval = %(interval)s
-        AND source = 'processed'
-        AND (%(strategy)s IS NULL OR strategy = %(strategy)s)
-        ORDER BY timestamp
-    """
-    params = {"ticker": ticker, "interval": interval, "strategy": strategy}
-    df = pd.read_sql(query, engine, params=params)
+def load_data_from_db(ticker: str, interval: str, columns: list[str] = None) -> pd.DataFrame:
+    from db.models import Candle
+    from db.session import get_db
 
-    if "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df = df.set_index("timestamp")
+    db = next(get_db())
+
+    query = db.query(Candle).filter(
+        Candle.ticker == ticker,
+        Candle.interval == interval,
+        Candle.source == "raw"
+    ).order_by(Candle.timestamp.asc())
+
+    df = pd.read_sql(query.statement, db.bind)
+
+    # Domyślnie pobieraj wszystkie kolumny
+    if columns is not None:
+        columns_lower = [col.lower() for col in columns]
+        df = df[[col for col in df.columns if col.lower() in columns_lower]]
 
     return df
-
-# 🔎 Test lokalny
-if __name__ == "__main__":
-    df = load_from_db("AAPL", "1d", strategy="macd")
-    print(df.head())

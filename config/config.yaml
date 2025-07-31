@@ -39,7 +39,7 @@ ml:
     rolling_window: 10
 
 database:
-  host: localhost
+  host: "ml-postgres"
   port: 5432
   name: ml_db
   user: ml_user

@@ -1,100 +1,103 @@
 import streamlit as st
 import requests
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
+# Używamy hosta 'localhost', ponieważ dashboard działa lokalnie
 API_URL = "http://backend:8000"
 
-st.title("ML Trading Bot Dashboard")
+st.title("📊 ML Trading Bot Dashboard")
 
 # ========== Wczytaj podstawowe dane z API ==========
-tickers = requests.get(f"{API_URL}/tickers").json()["tickers"]
-intervals = requests.get(f"{API_URL}/intervals").json()["intervals"]
-strategies = requests.get(f"{API_URL}/strategies").json()["strategies"]
+try:
+    tickers = requests.get(f"{API_URL}/tickers").json()["tickers"]
+    intervals = requests.get(f"{API_URL}/intervals").json()["intervals"]
+    strategies = requests.get(f"{API_URL}/strategies").json()["strategies"]
+except Exception as e:
+    st.error(f"❌ Nie można połączyć się z backendem: {e}")
+    st.stop()
 
-ticker = st.selectbox("Wybierz instrument (ticker):", tickers, index=0)
-interval = st.selectbox("Wybierz interwał:", intervals, index=0)
-selected_strategies = st.multiselect(
-    "Wybierz strategię (możesz kilka):", strategies, default=[strategies[0]]
-)
+# ========== Wybór użytkownika ==========
+ticker = st.selectbox("🎯 Wybierz instrument:", tickers)
+interval = st.selectbox("⏱️ Wybierz interwał:", intervals)
+selected_strategies = st.multiselect("📚 Wybierz strategie:", strategies, default=[strategies[0]])
 
-# ========== Tryb agregacji ==========
+agg_mode = "AND"
 if len(selected_strategies) > 1:
-    agg_mode = st.radio(
-        "Tryb łączenia sygnałów:",
-        options=["AND", "OR", "Głosowanie (wagi)"],
-        index=0,
-        horizontal=True
-    )
-else:
-    agg_mode = "AND"
+    agg_mode = st.radio("🔗 Tryb agregacji:", ["AND", "OR", "Głosowanie (wagi)"], horizontal=True)
 
 weights = None
 if agg_mode == "Głosowanie (wagi)":
-    st.write("Ustaw wagi dla każdej strategii:")
     weights = {s: st.slider(f"Waga: {s}", 0.0, 2.0, 1.0, 0.1) for s in selected_strategies}
 
-# ========== Sekcja: Trenowanie LSTM ==========
+# ========== Trening LSTM ==========
 st.markdown("---")
 st.subheader("🧠 Trening modelu LSTM")
-epochs = st.slider("Liczba epok:", 5, 200, 25, step=5)
 
-if st.button("🔁 Wytrenuj model LSTM", key="train_lstm_btn"):
+epochs = st.slider("Liczba epok treningowych:", 5, 200, 25, step=5)
+
+if st.button("🔁 Wytrenuj model"):
     try:
-        resp = requests.post(
-            f"{API_URL}/ml/train",
-            params={"ticker": ticker, "interval": interval, "epochs": epochs}
-        )
-        resp.raise_for_status()
-        st.success(f"✅ Model wytrenowany: {ticker} {interval} ({epochs} epok)")
+        r = requests.post(f"{API_URL}/ml/train", json={
+            "ticker": ticker,
+            "interval": interval,
+            "epochs": epochs,
+            "n_steps": 100,
+            "seq_len": 80
+        })
+        r.raise_for_status()
+        st.success("✅ Model wytrenowany")
     except Exception as e:
-        st.error(f"❌ Błąd podczas treningu: {e}")
+        st.error(f"❌ Błąd treningu: {e}")
 
-# ========== Sekcja: Predykcja LSTM ==========
+# ========== Predykcja ==========
 st.markdown("---")
-st.subheader("📈 Predykcja LSTM")
-if st.button("🔮 Wygeneruj predykcję LSTM", key="lstm_forecast_btn"):
+st.subheader("🔮 Predykcja LSTM")
+
+if st.button("📈 Wygeneruj predykcję"):
     try:
-        resp = requests.get(
-            f"{API_URL}/ml/forecast",
-            params={"ticker": ticker, "interval": interval, "n_steps": 100}
-        )
-        resp.raise_for_status()
-        out = resp.json()
-        st.success("✅ Gotowe! Przewidziano kolejne 100 wartości.")
-        st.line_chart(out["forecast"])
+        r = requests.get(f"{API_URL}/ml/forecast", params={
+            "ticker": ticker, "interval": interval, "n_steps": 100
+        })
+        resp_json = r.json()
+        if "forecast" in resp_json:
+            forecast = resp_json["forecast"]
+            st.line_chart(forecast)
+        else:
+            st.error(f"❌ Błąd predykcji: {resp_json.get('message', 'Brak danych')}")
+            st.write("Odpowiedź API:", resp_json)
     except Exception as e:
-        st.error(f"❌ Błąd podczas predykcji: {e}")
+        st.error(f"❌ Błąd predykcji: {e}")
 
-# ========== Sekcja: Predykcja + backtest ==========
+# ========== Backtest predykcji ==========
 st.markdown("---")
-st.subheader("📊 Predykcja + Backtest LSTM")
-if st.button("🧪 Wygeneruj predykcję i backtest", key="lstm_backtest_btn"):
+st.subheader("🧪 Backtest predykcji LSTM")
+
+if st.button("📊 Przeprowadź backtest"):
     try:
-        resp = requests.get(
-            f"{API_URL}/ml/forecast",
-            params={"ticker": ticker, "interval": interval, "n_steps": 100}
-        )
-        resp.raise_for_status()
-        out = resp.json()
-        forecast = out["forecast"]
-        st.success("✅ Przewidywanie zakończone. Poniżej wyniki backtestu.")
-
-        # Sztuczny backtest - uproszczony do pokazania equity z predykcji
-        df = pd.DataFrame({"forecast": forecast})
-        df["pct_change"] = df["forecast"].pct_change().fillna(0)
-        df["equity"] = (1 + df["pct_change"]).cumprod()
-        st.line_chart(df["equity"])
+        r = requests.get(f"{API_URL}/ml/forecast", params={
+            "ticker": ticker, "interval": interval, "n_steps": 100
+        })
+        resp_json = r.json()
+        if "forecast" in resp_json:
+            forecast = pd.Series(resp_json["forecast"])
+            df = pd.DataFrame({
+                "forecast": forecast,
+                "pct_change": forecast.pct_change().fillna(0)
+            })
+            df["equity"] = (1 + df["pct_change"]).cumprod()
+            st.line_chart(df["equity"])
+        else:
+            st.error(f"❌ Błąd backtestu: {resp_json.get('message', 'Brak danych')}")
+            st.write("Odpowiedź API:", resp_json)
     except Exception as e:
-        st.error(f"❌ Błąd podczas predykcji/backtestu: {e}")
+        st.error(f"❌ Błąd backtestu: {e}")
 
-# ========== Sekcja: Agregacja strategii klasycznych ==========
+# ========== Strategia klasyczna i agregacja ==========
 st.markdown("---")
-st.subheader("📚 Agregacja strategii klasycznych")
-if st.button("📉 Pokaż wyniki strategii", key="show_results_btn"):
-    # Pobierz metryki
-    metrics_list = []
+st.subheader("📚 Klasyczne strategie inwestycyjne")
+
+if st.button("📊 Pokaż wyniki strategii"):
+    metrics = []
     for strat in selected_strategies:
         try:
             resp = requests.get(f"{API_URL}/results", params={
@@ -103,50 +106,45 @@ if st.button("📉 Pokaż wyniki strategii", key="show_results_btn"):
                 "strategy": strat
             })
             if resp.ok:
-                metrics_list.extend(resp.json())
-        except Exception:
-            pass
+                metrics.extend(resp.json())
+        except:
+            continue
 
-    if metrics_list:
-        dfm = pd.DataFrame(metrics_list)
-        if not dfm.empty:
-            st.subheader("Metryki:")
-            st.dataframe(dfm, hide_index=True)
+    if metrics:
+        df = pd.DataFrame(metrics)
+        st.write("📈 Metryki strategii:")
+        st.dataframe(df, hide_index=True)
     else:
-        st.info("Brak metryk.")
+        st.info("Brak metryk dla tych strategii.")
 
-    # Pobierz sygnały zagregowane
-    mode = "and" if agg_mode == "AND" else "or" if agg_mode == "OR" else "vote"
-    payload = {
-        "ticker": ticker,
-        "interval": interval,
-        "strategies": selected_strategies,
-        "mode": mode,
-        "weights": weights if mode == "vote" else None,
-    }
-    sig_resp = requests.post(f"{API_URL}/signals/aggregate", json=payload)
-    if not sig_resp.ok:
-        st.error(f"Błąd: {sig_resp.text}")
-    else:
-        signals = sig_resp.json()
-        if signals:
-            dfsig = pd.DataFrame(signals)
+    # Agregacja sygnałów
+    try:
+        mode = "and" if agg_mode == "AND" else "or" if agg_mode == "OR" else "vote"
+        payload = {
+            "ticker": ticker,
+            "interval": interval,
+            "strategies": selected_strategies,
+            "mode": mode,
+            "weights": weights if mode == "vote" else None
+        }
+        sig_resp = requests.post(f"{API_URL}/signals/aggregate", json=payload)
+        if sig_resp.ok:
+            dfsig = pd.DataFrame(sig_resp.json())
             dfsig["date"] = pd.to_datetime(dfsig["date"])
-            st.subheader("Sygnały inwestycyjne (agregowane):")
             st.line_chart(dfsig.set_index("date")["signal"])
         else:
-            st.info("Brak sygnałów do pokazania.")
+            st.warning(f"Nie udało się pobrać sygnałów: {sig_resp.text}")
+    except Exception as e:
+        st.error(f"Błąd agregacji sygnałów: {e}")
 
-    # Pobierz equity curve
-    eq_resp = requests.post(f"{API_URL}/equity/aggregate", json=payload)
-    if not eq_resp.ok:
-        st.error(f"Błąd equity: {eq_resp.text}")
-    else:
-        equity = eq_resp.json()
-        if equity:
-            dfeq = pd.DataFrame(equity)
+    # Agregacja equity curve
+    try:
+        eq_resp = requests.post(f"{API_URL}/equity/aggregate", json=payload)
+        if eq_resp.ok:
+            dfeq = pd.DataFrame(eq_resp.json())
             dfeq["date"] = pd.to_datetime(dfeq["date"])
-            st.subheader("Krzywa wartości portfela (equity curve):")
             st.line_chart(dfeq.set_index("date")["equity"])
         else:
-            st.info("Brak danych equity.")
+            st.warning(f"Nie udało się pobrać equity: {eq_resp.text}")
+    except Exception as e:
+        st.error(f"Błąd agregacji equity: {e}")

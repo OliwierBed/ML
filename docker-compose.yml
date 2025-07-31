@@ -2,12 +2,13 @@ version: "3.9"
 
 services:
   db:
-    image: postgres:16-alpine
-    container_name: db
+    container_name: ml-postgres
+    image: postgres:16
+    restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: trading
+      POSTGRES_DB: ml_db
+      POSTGRES_USER: ml_user
+      POSTGRES_PASSWORD: ml_password
     ports:
       - "5432:5432"
     volumes:

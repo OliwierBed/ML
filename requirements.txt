@@ -32,3 +32,4 @@ torchaudio>=2.0.0
 psycopg2-binary
 sqlalchemy
 alembic
+psycopg2-binary

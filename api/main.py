@@ -4,10 +4,12 @@ import pandas as pd
 import os
 from functools import reduce
 from api.routers import ml
+from api.routers import backtest  
 
 app = FastAPI(title="TradingBot API")
 
 app.include_router(ml.router, prefix="/ml")
+app.include_router(backtest.router)  # 👈
 
 app.add_middleware(
     CORSMiddleware,

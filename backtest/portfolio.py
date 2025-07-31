@@ -18,7 +18,7 @@ class BacktestEngine:
 
         # pozycja (1, -1, 0) – wypełniamy 0 -> ffillem, żeby utrzymać pozycję
         position = self.data[signal_col].replace(0, np.nan).ffill().fillna(0)
-        ret = self.data["close"].pct_change().fillna(0)
+        ret = self.data["close"].pct_change(fill_method=None).fillna(0)
 
         # strategia używa pozycji z poprzedniej świecy
         strat_ret = ret * position.shift(1).fillna(0)

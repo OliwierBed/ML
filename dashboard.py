@@ -1,9 +1,10 @@
+import os
 import streamlit as st
 import requests
 import pandas as pd
 
-# Używamy hosta 'localhost', ponieważ dashboard działa lokalnie
-API_URL = "http://backend:8000"
+# Use backend service inside Docker; override with BACKEND_URL for local runs
+API_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 
 st.title("📊 ML Trading Bot Dashboard")
 

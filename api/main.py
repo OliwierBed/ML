@@ -1,10 +1,13 @@
-from fastapi import FastAPI, Query, HTTPException, Body
+from fastapi import FastAPI, Query, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
 from functools import reduce
 from api.routers import ml
-from api.routers import backtest  
+from api.routers import backtest
+from sqlalchemy.orm import Session
+from db.session import get_db
+from db.models import Candle
 
 app = FastAPI(title="TradingBot API")
 
@@ -20,35 +23,39 @@ app.add_middleware(
 )
 
 RESULTS_DIR = "data-pipelines/feature_stores/data/results"
-ENSEMBLE_DIR = "data-pipelines/feature_stores/data/processed/ensemble"
-PROCESSED_DIR = "data-pipelines/feature_stores/data/processed"
+
+
+def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.DataFrame:
+    source = "ensemble" if strategy == "ensemble" else "processed"
+    q = db.query(Candle.timestamp.label("date"), Candle.signal, Candle.close).filter(
+        Candle.ticker == ticker,
+        Candle.interval == interval,
+        Candle.source == source,
+    )
+    if strategy != "ensemble":
+        q = q.filter(Candle.strategy == strategy)
+    q = q.order_by(Candle.timestamp.asc())
+    df = pd.read_sql(q.statement, db.bind)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
 
 @app.get("/tickers")
-def get_tickers():
-    try:
-        results = pd.read_csv(os.path.join(RESULTS_DIR, "batch_results.csv"), sep=";")
-        tickers = sorted(results["ticker"].unique().tolist())
-    except Exception:
-        tickers = ["AAPL", "MSFT", "TSLA"]
-    return {"tickers": tickers}
+def get_tickers(db: Session = Depends(get_db)):
+    tickers = db.query(Candle.ticker).filter(Candle.source == "raw").distinct().all()
+    return {"tickers": sorted(t[0] for t in tickers)}
 
 @app.get("/intervals")
-def get_intervals():
-    try:
-        results = pd.read_csv(os.path.join(RESULTS_DIR, "batch_results.csv"), sep=";")
-        intervals = sorted(results["interval"].unique().tolist())
-    except Exception:
-        intervals = ["1h", "1d", "1wk"]
-    return {"intervals": intervals}
+def get_intervals(db: Session = Depends(get_db)):
+    intervals = db.query(Candle.interval).filter(Candle.source == "raw").distinct().all()
+    return {"intervals": sorted(i[0] for i in intervals)}
 
 @app.get("/strategies")
-def get_strategies():
-    try:
-        results = pd.read_csv(os.path.join(RESULTS_DIR, "batch_results.csv"), sep=";")
-        strategies = sorted(list(set(results["strategy"].unique().tolist() + ["ensemble"])))
-    except Exception:
-        strategies = ["macd", "rsi", "sma", "ema", "bollinger", "ensemble"]
-    return {"strategies": strategies}
+def get_strategies(db: Session = Depends(get_db)):
+    strategies = db.query(Candle.strategy).filter(Candle.strategy.isnot(None)).distinct().all()
+    strat_list = sorted({s[0] for s in strategies if s[0]})
+    if "ensemble" not in strat_list:
+        strat_list.append("ensemble")
+    return {"strategies": strat_list}
 
 @app.get("/results")
 def get_results(
@@ -79,23 +86,19 @@ def get_results(
 def get_signals(
     ticker: str,
     interval: str,
-    strategy: str = "ensemble"
+    strategy: str = "ensemble",
+    db: Session = Depends(get_db),
 ):
-    if strategy == "ensemble":
-        fname = f"{ticker}_{interval}_ensemble_full.csv"
-        path = os.path.join(ENSEMBLE_DIR, fname)
-    else:
-        fname = f"{ticker}_{interval}_20250724_111413_indicators.csv"
-        path = os.path.join(PROCESSED_DIR, fname)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"Brak pliku sygnałów: {path}")
-    df = pd.read_csv(path, sep=";")
-    columns = [c for c in df.columns if c in ("date", "signal", "close")]
-    return df[columns].to_dict(orient="records")
+    df = _load_signals(db, ticker, interval, strategy)
+    if df.empty:
+        raise HTTPException(status_code=404, detail="Brak sygnałów")
+    df["date"] = df["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    cols = [c for c in df.columns if c in ("date", "signal", "close")]
+    return df[cols].to_dict(orient="records")
 
 # --- NOWOŚĆ: endpoint do agregacji sygnałów ---
 @app.post("/signals/aggregate")
-def aggregate_signals(body: dict = Body(...)):
+def aggregate_signals(body: dict = Body(...), db: Session = Depends(get_db)):
     ticker = body.get("ticker")
     interval = body.get("interval")
     strategies = body.get("strategies")
@@ -106,16 +109,8 @@ def aggregate_signals(body: dict = Body(...)):
 
     all_signals = []
     for strat in strategies:
-        if strat == "ensemble":
-            fname = f"{ticker}_{interval}_ensemble_full.csv"
-            path = os.path.join(ENSEMBLE_DIR, fname)
-        else:
-            fname = f"{ticker}_{interval}_20250724_111413_indicators.csv"
-            path = os.path.join(PROCESSED_DIR, fname)
-        if not os.path.exists(path):
-            continue
-        df = pd.read_csv(path, sep=";")
-        if "date" not in df.columns or "signal" not in df.columns:
+        df = _load_signals(db, ticker, interval, strat)
+        if df.empty:
             continue
         df = df[["date", "signal"]].copy()
         df.rename(columns={"signal": f"signal_{strat}"}, inplace=True)
@@ -124,7 +119,6 @@ def aggregate_signals(body: dict = Body(...)):
         return []
     merged = reduce(lambda left, right: pd.merge(left, right, on="date", how="outer"), all_signals)
     merged = merged.sort_values("date")
-    # --- Agregacja ---
     sigcols = [c for c in merged.columns if c.startswith("signal_")]
     if mode == "and":
         merged["signal"] = merged[sigcols].apply(
@@ -142,11 +136,12 @@ def aggregate_signals(body: dict = Body(...)):
         merged["signal"] = merged.apply(weighted_vote, axis=1)
     else:
         raise HTTPException(status_code=400, detail="Nieznany tryb agregacji.")
+    merged["date"] = merged["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
     return merged[["date", "signal"]].to_dict(orient="records")
 
 # --- NOWOŚĆ: endpoint do equity curve dla agregatu ---
 @app.post("/equity/aggregate")
-def aggregate_equity(body: dict = Body(...)):
+def aggregate_equity(body: dict = Body(...), db: Session = Depends(get_db)):
     ticker = body.get("ticker")
     interval = body.get("interval")
     strategies = body.get("strategies")
@@ -154,20 +149,11 @@ def aggregate_equity(body: dict = Body(...)):
     weights = body.get("weights", None)
     initial_cash = 100000  # albo z configu
 
-    # Wczytaj sygnały zagregowane
     all_signals = []
     closes = None
     for strat in strategies:
-        if strat == "ensemble":
-            fname = f"{ticker}_{interval}_ensemble_full.csv"
-            path = os.path.join(ENSEMBLE_DIR, fname)
-        else:
-            fname = f"{ticker}_{interval}_20250724_111413_indicators.csv"
-            path = os.path.join(PROCESSED_DIR, fname)
-        if not os.path.exists(path):
-            continue
-        df = pd.read_csv(path, sep=";")
-        if "date" not in df.columns or "signal" not in df.columns:
+        df = _load_signals(db, ticker, interval, strat)
+        if df.empty:
             continue
         if closes is None and "close" in df.columns:
             closes = df[["date", "close"]].copy()
@@ -180,7 +166,6 @@ def aggregate_equity(body: dict = Body(...)):
     merged = pd.merge(merged, closes, on="date", how="left")
     merged = merged.sort_values("date")
     sigcols = [c for c in merged.columns if c.startswith("signal_")]
-    # Agregacja sygnałów
     if mode == "and":
         merged["signal"] = merged[sigcols].apply(
             lambda row: 1 if all(x == 1 for x in row) else -1 if all(x == -1 for x in row) else 0, axis=1)
@@ -197,30 +182,29 @@ def aggregate_equity(body: dict = Body(...)):
         merged["signal"] = merged.apply(weighted_vote, axis=1)
     else:
         raise HTTPException(status_code=400, detail="Nieznany tryb agregacji.")
-    # --- Oblicz equity curve ---
+
     cash = initial_cash
-    position = 0  # 0-brak, 1-long, -1-short
+    position = 0
     equity_curve = []
     last_price = None
-    for idx, row in merged.iterrows():
+    for _, row in merged.iterrows():
         price = row["close"]
         signal = row["signal"]
         if pd.isnull(price) or pd.isnull(signal):
             equity_curve.append((row["date"], cash))
             continue
-        # Prosty model: jeśli sygnał=1 i nie mamy pozycji – kup, jeśli sygnał=-1 i mamy long – sprzedaj na zero, short ignorujemy (lub zrób reverse, jak chcesz)
         if signal == 1 and position == 0:
             position = 1
             entry_price = price
         elif signal == -1 and position == 1:
-            cash *= price / entry_price  # zaktualizuj equity
+            cash *= price / entry_price
             position = 0
         equity_curve.append((row["date"], cash if position == 0 else cash * price / entry_price))
         last_price = price
-    # Wyjście z pozycji na końcu
     if position == 1 and last_price:
         cash *= last_price / entry_price
     equity = pd.DataFrame(equity_curve, columns=["date", "equity"])
+    equity["date"] = pd.to_datetime(equity["date"]).dt.strftime("%Y-%m-%d %H:%M:%S")
     return equity.to_dict(orient="records")
 
 @app.get("/ping")

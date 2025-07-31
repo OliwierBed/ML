@@ -1,31 +1,54 @@
-version: '3.8'
+version: "3.9"
 
 services:
   db:
-    image: postgres:15
-    container_name: postgres_db
-    restart: always
-    ports:
-      - "5432:5432"
+    image: postgres:16-alpine
+    container_name: db
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: trading
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  web:
-    build: .
-    container_name: ml_trading_web
     ports:
-      - "8000:8000"
-      - "8501:8501"
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    container_name: ml
+    volumes:
+      - .:/app
     depends_on:
       - db
-    environment:
-      DATABASE_URL: postgresql+psycopg2://user:password@db:5432/trading
+    ports:
+      - "8001:8001"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: backend
+    depends_on:
+      - db
+      - ml
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: frontend
+    depends_on:
+      - backend
+    ports:
+      - "8501:8501"
     volumes:
       - .:/app
 
 volumes:
-  postgres_data:
+  pgdata:

@@ -21,3 +21,6 @@ FastAPI backend: http://localhost:8000
 
 streamlit run dashboard.py          http://localhost:8501/
 uvicorn api.main:app --reload       http://127.0.0.1:8000/docs#/
+
+cleaning 
+docker system prune -a --volumes

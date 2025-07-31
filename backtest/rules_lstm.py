@@ -8,7 +8,7 @@ class LSTMStrategy:
         self.interval = interval
         self.models_dir = models_dir
         self.threshold = threshold
-        self.model, self.scaler, self.meta = load_model_bundle(ticker, interval, models_dir)
+        self.model, self.scaler, self.meta = load_model_bundle(ticker, interval)
 
     def generate_signals(self):
         # tu możesz przesuwać okno po df i prognozować *każdą* świecę (wolniej),

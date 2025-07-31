@@ -13,7 +13,7 @@ TOP_STRATEGIES_FILE = os.path.join(RESULTS_DIR, "top_per_bucket.csv")
 os.makedirs(ENSEMBLE_DIR, exist_ok=True)
 
 def find_backtest_file(filename, strategy, results_dir=RESULTS_DIR):
-    # Zamien np. AAPL_1h_20250727_222034_indicators.csv -> AAPL_1h_20250727_222034_indicators_macd_backtest.csv
+    # Zamień np. "AAPL_1h_20250727_222034_indicators.csv" na "AAPL_1h_20250727_222034_indicators_macd_backtest.csv"
     base = filename.replace('.csv', f'_{strategy}_backtest.csv')
     path = os.path.join(results_dir, base)
     return path if os.path.exists(path) else None

@@ -1,10 +1,9 @@
 import os
-import glob
 import torch
-import pandas as pd
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Dataset, DataLoader
+
+from ml.utils import prepare_close_series
 
 from ml.models.lstm_attention import LSTMWithAttention
 from db.utils.load_from_db import load_data_from_db
@@ -38,18 +37,7 @@ def train_lstm_model(ticker: str, interval: str, epochs: int = 25, seq_len: int 
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     df = load_data_from_db(ticker=ticker, interval=interval, columns=["close"])
-    df.columns = df.columns.str.lower()
-
-    if "close" not in df.columns:
-        raise ValueError(f"Brak kolumny 'close' w danych z bazy dla: {ticker} {interval}")
-
-    df = df.dropna(subset=["close"]).reset_index(drop=True)
-    df["close"] = df["close"].rolling(window=10).mean()
-    df = df.dropna()
-
-    scaler = MinMaxScaler()
-    df["close"] = scaler.fit_transform(df[["close"]])
-    series = df["close"].values.astype(np.float32)
+    _, series, _ = prepare_close_series(df)
 
     if len(series) <= seq_len:
         raise ValueError(f"Za mało danych ({len(series)}). Potrzeba > {seq_len}.")

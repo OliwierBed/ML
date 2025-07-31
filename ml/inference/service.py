@@ -1,39 +1,27 @@
 # ml/inference/service.py
 import os
-import glob
 import torch
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.preprocessing import MinMaxScaler
 
 from ml.models.lstm_attention import LSTMWithAttention
 from db.utils.load_from_db import load_data_from_db
+from ml.utils import prepare_close_series
 
 MODEL_DIR = "ml/saved_models"
 SEQ_LEN = 160
 
 
 def _prepare_series_with_ma_and_scaler(df: pd.DataFrame):
-    d = df.copy()
-    d.columns = d.columns.str.lower()
-    if "close" not in d.columns:
-        raise ValueError("Brak kolumny 'close' w danych.")
+    d, series_scaled, scaler = prepare_close_series(df)
     if "date" not in d.columns:
         d["date"] = range(len(d))
-
-    d["close_ma"] = d["close"].rolling(window=10).mean()
-    d = d.dropna(subset=["close_ma"]).reset_index(drop=True)
-
-    scaler = MinMaxScaler()
-    d["close_scaled"] = scaler.fit_transform(d[["close_ma"]])
-    series_scaled = d["close_scaled"].values.astype(np.float32)
-
     d["date"] = pd.to_datetime(d["date"], errors="coerce")
     d = d.sort_values("date")
     d["date"] = d["date"].ffill()
     d["date"] = d["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
-
     return d[["date", "close_ma", "close_scaled"]].copy(), series_scaled, scaler
 
 

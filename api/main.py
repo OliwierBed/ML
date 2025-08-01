@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
 from functools import reduce
+import yaml
 from api.routers import ml
 from api.routers import backtest
 from sqlalchemy.orm import Session
@@ -24,8 +25,14 @@ app.add_middleware(
 
 RESULTS_DIR = "data-pipelines/feature_stores/data/results"
 
+# Fallback values when the database is unavailable
+with open("config/config.yaml", "r", encoding="utf-8") as _f:
+    _CONFIG = yaml.safe_load(_f)
 
-def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.DataFrame:
+
+def _load_signals(
+    db: Session, ticker: str, interval: str, strategy: str
+) -> pd.DataFrame:
     source = "ensemble" if strategy == "ensemble" else "processed"
     q = db.query(Candle.timestamp.label("date"), Candle.signal, Candle.close).filter(
         Candle.ticker == ticker,
@@ -39,29 +46,49 @@ def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.
     df["date"] = pd.to_datetime(df["date"])
     return df
 
+
 @app.get("/tickers")
 def get_tickers(db: Session = Depends(get_db)):
-    tickers = db.query(Candle.ticker).filter(Candle.source == "raw").distinct().all()
-    return {"tickers": sorted(t[0] for t in tickers)}
+    try:
+        tickers = (
+            db.query(Candle.ticker).filter(Candle.source == "raw").distinct().all()
+        )
+        return {"tickers": sorted(t[0] for t in tickers)}
+    except Exception:
+        return {"tickers": _CONFIG["data"].get("tickers", [])}
+
 
 @app.get("/intervals")
 def get_intervals(db: Session = Depends(get_db)):
-    intervals = db.query(Candle.interval).filter(Candle.source == "raw").distinct().all()
-    return {"intervals": sorted(i[0] for i in intervals)}
+    try:
+        intervals = (
+            db.query(Candle.interval).filter(Candle.source == "raw").distinct().all()
+        )
+        return {"intervals": sorted(i[0] for i in intervals)}
+    except Exception:
+        return {"intervals": _CONFIG["data"].get("intervals", [])}
+
 
 @app.get("/strategies")
 def get_strategies(db: Session = Depends(get_db)):
-    strategies = db.query(Candle.strategy).filter(Candle.strategy.isnot(None)).distinct().all()
-    strat_list = sorted({s[0] for s in strategies if s[0]})
+    try:
+        strategies = (
+            db.query(Candle.strategy)
+            .filter(Candle.strategy.isnot(None))
+            .distinct()
+            .all()
+        )
+        strat_list = sorted({s[0] for s in strategies if s[0]})
+    except Exception:
+        strat_list = list(_CONFIG["backtest"].get("strategies", []))
     if "ensemble" not in strat_list:
         strat_list.append("ensemble")
     return {"strategies": strat_list}
 
+
 @app.get("/results")
 def get_results(
-    ticker: str = Query(None),
-    interval: str = Query(None),
-    strategy: str = Query(None)
+    ticker: str = Query(None), interval: str = Query(None), strategy: str = Query(None)
 ):
     df = pd.read_csv(os.path.join(RESULTS_DIR, "batch_results.csv"), sep=";")
     if ticker:
@@ -72,7 +99,9 @@ def get_results(
         df = df[df["strategy"] == strategy]
     if strategy == "ensemble":
         try:
-            ens = pd.read_csv(os.path.join(RESULTS_DIR, "ensemble_batch_results.csv"), sep=";")
+            ens = pd.read_csv(
+                os.path.join(RESULTS_DIR, "ensemble_batch_results.csv"), sep=";"
+            )
             if ticker:
                 ens = ens[ens["ticker"] == ticker]
             if interval:
@@ -81,6 +110,7 @@ def get_results(
         except Exception:
             raise HTTPException(status_code=404, detail="Brak wyników ensemble.")
     return df.to_dict(orient="records")
+
 
 @app.get("/signals")
 def get_signals(
@@ -95,6 +125,7 @@ def get_signals(
     df["date"] = df["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
     cols = [c for c in df.columns if c in ("date", "signal", "close")]
     return df[cols].to_dict(orient="records")
+
 
 # --- NOWOŚĆ: endpoint do agregacji sygnałów ---
 @app.post("/signals/aggregate")
@@ -117,27 +148,52 @@ def aggregate_signals(body: dict = Body(...), db: Session = Depends(get_db)):
         all_signals.append(df)
     if not all_signals:
         return []
-    merged = reduce(lambda left, right: pd.merge(left, right, on="date", how="outer"), all_signals)
+    merged = reduce(
+        lambda left, right: pd.merge(left, right, on="date", how="outer"), all_signals
+    )
     merged = merged.sort_values("date")
     sigcols = [c for c in merged.columns if c.startswith("signal_")]
     if mode == "and":
         merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if all(x == 1 for x in row) else -1 if all(x == -1 for x in row) else 0, axis=1)
+            lambda row: (
+                1
+                if all(x == 1 for x in row)
+                else -1 if all(x == -1 for x in row) else 0
+            ),
+            axis=1,
+        )
     elif mode == "or":
         merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if any(x == 1 for x in row) else -1 if any(x == -1 for x in row) else 0, axis=1)
+            lambda row: (
+                1
+                if any(x == 1 for x in row)
+                else -1 if any(x == -1 for x in row) else 0
+            ),
+            axis=1,
+        )
     elif mode == "vote":
-        weight_vals = [weights.get(c.replace("signal_", ""), 1.0) if weights else 1.0 for c in sigcols]
+        weight_vals = [
+            weights.get(c.replace("signal_", ""), 1.0) if weights else 1.0
+            for c in sigcols
+        ]
+
         def weighted_vote(row):
-            s = sum(w * (row[col] if pd.notnull(row[col]) else 0) for w, col in zip(weight_vals, sigcols))
-            if s > 0: return 1
-            if s < 0: return -1
+            s = sum(
+                w * (row[col] if pd.notnull(row[col]) else 0)
+                for w, col in zip(weight_vals, sigcols)
+            )
+            if s > 0:
+                return 1
+            if s < 0:
+                return -1
             return 0
+
         merged["signal"] = merged.apply(weighted_vote, axis=1)
     else:
         raise HTTPException(status_code=400, detail="Nieznany tryb agregacji.")
     merged["date"] = merged["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
     return merged[["date", "signal"]].to_dict(orient="records")
+
 
 # --- NOWOŚĆ: endpoint do equity curve dla agregatu ---
 @app.post("/equity/aggregate")
@@ -162,23 +218,47 @@ def aggregate_equity(body: dict = Body(...), db: Session = Depends(get_db)):
         all_signals.append(df)
     if not all_signals or closes is None:
         return []
-    merged = reduce(lambda left, right: pd.merge(left, right, on="date", how="outer"), all_signals)
+    merged = reduce(
+        lambda left, right: pd.merge(left, right, on="date", how="outer"), all_signals
+    )
     merged = pd.merge(merged, closes, on="date", how="left")
     merged = merged.sort_values("date")
     sigcols = [c for c in merged.columns if c.startswith("signal_")]
     if mode == "and":
         merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if all(x == 1 for x in row) else -1 if all(x == -1 for x in row) else 0, axis=1)
+            lambda row: (
+                1
+                if all(x == 1 for x in row)
+                else -1 if all(x == -1 for x in row) else 0
+            ),
+            axis=1,
+        )
     elif mode == "or":
         merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if any(x == 1 for x in row) else -1 if any(x == -1 for x in row) else 0, axis=1)
+            lambda row: (
+                1
+                if any(x == 1 for x in row)
+                else -1 if any(x == -1 for x in row) else 0
+            ),
+            axis=1,
+        )
     elif mode == "vote":
-        weight_vals = [weights.get(c.replace("signal_", ""), 1.0) if weights else 1.0 for c in sigcols]
+        weight_vals = [
+            weights.get(c.replace("signal_", ""), 1.0) if weights else 1.0
+            for c in sigcols
+        ]
+
         def weighted_vote(row):
-            s = sum(w * (row[col] if pd.notnull(row[col]) else 0) for w, col in zip(weight_vals, sigcols))
-            if s > 0: return 1
-            if s < 0: return -1
+            s = sum(
+                w * (row[col] if pd.notnull(row[col]) else 0)
+                for w, col in zip(weight_vals, sigcols)
+            )
+            if s > 0:
+                return 1
+            if s < 0:
+                return -1
             return 0
+
         merged["signal"] = merged.apply(weighted_vote, axis=1)
     else:
         raise HTTPException(status_code=400, detail="Nieznany tryb agregacji.")
@@ -199,13 +279,16 @@ def aggregate_equity(body: dict = Body(...), db: Session = Depends(get_db)):
         elif signal == -1 and position == 1:
             cash *= price / entry_price
             position = 0
-        equity_curve.append((row["date"], cash if position == 0 else cash * price / entry_price))
+        equity_curve.append(
+            (row["date"], cash if position == 0 else cash * price / entry_price)
+        )
         last_price = price
     if position == 1 and last_price:
         cash *= last_price / entry_price
     equity = pd.DataFrame(equity_curve, columns=["date", "equity"])
     equity["date"] = pd.to_datetime(equity["date"]).dt.strftime("%Y-%m-%d %H:%M:%S")
     return equity.to_dict(orient="records")
+
 
 @app.get("/ping")
 def ping():

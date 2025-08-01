@@ -27,10 +27,14 @@ STRATEGY_MAP = {
     "bollinger": BollingerBandsStrategy,
 }
 
-app = FastAPI(title="TradingBot API")
+CONFIG = load_config()
+DEFAULT_TICKERS = list(CONFIG.data.tickers)
+DEFAULT_INTERVALS = list(CONFIG.data.intervals)
+DEFAULT_STRATEGIES = list(CONFIG.backtest.strategies)
 
+app = FastAPI(title="TradingBot API")
 app.include_router(ml.router)
-app.include_router(backtest.router)  # 👈
+app.include_router(backtest.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,9 +44,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CFG = load_config()
+CFG = CONFIG
 RESULTS_DIR = "data-pipelines/feature_stores/data/results"
-
 
 def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.DataFrame:
     source = "ensemble" if strategy == "ensemble" else "processed"
@@ -70,7 +73,7 @@ def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.
         if strat_cls is None:
             return pd.DataFrame()
         raw = raw.copy()
-        if "timestamp" in raw.columns and "date" not in raw.columns:
+        if "date" not in raw.columns and "timestamp" in raw.columns:
             raw.rename(columns={"timestamp": "date"}, inplace=True)
         raw["date"] = pd.to_datetime(raw["date"])
         signals = strat_cls(raw).generate_signals()
@@ -83,9 +86,7 @@ def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.
         return pd.DataFrame()
     return df
 
-
 def _list_strategies(db: Session) -> list[str]:
-    """Return all strategy names registered in the database or fallback config."""
     try:
         strategies = (
             db.query(Candle.strategy)
@@ -96,10 +97,8 @@ def _list_strategies(db: Session) -> list[str]:
         strat_list = sorted({s[0] for s in strategies if s[0]})
     except Exception:
         strat_list = []
-
     if not strat_list:
-        strat_list = list(getattr(CFG.backtest, "strategies", []))
-
+        strat_list = list(DEFAULT_STRATEGIES)
     if "ensemble" not in strat_list:
         strat_list.append("ensemble")
     return strat_list
@@ -113,11 +112,12 @@ def get_tickers(db: Session = Depends(get_db)):
             .distinct()
             .all()
         )
-        if tickers:
-            return {"tickers": sorted(t[0] for t in tickers)}
+        tickers = sorted(t[0] for t in tickers if t[0])
     except Exception:
-        pass
-    return {"tickers": list(getattr(CFG.data, "tickers", []))}
+        tickers = []
+    if not tickers:
+        tickers = DEFAULT_TICKERS
+    return {"tickers": tickers}
 
 @app.get("/intervals")
 def get_intervals(db: Session = Depends(get_db)):
@@ -128,171 +128,17 @@ def get_intervals(db: Session = Depends(get_db)):
             .distinct()
             .all()
         )
-        if intervals:
-            return {"intervals": sorted(i[0] for i in intervals)}
+        intervals = sorted(i[0] for i in intervals if i[0])
     except Exception:
-        pass
-    return {"intervals": list(getattr(CFG.data, "intervals", []))}
+        intervals = []
+    if not intervals:
+        intervals = DEFAULT_INTERVALS
+    return {"intervals": intervals}
 
 @app.get("/strategies")
 def get_strategies(db: Session = Depends(get_db)):
-    return {"strategies": _list_strategies(db)}
-
-@app.get("/results")
-def get_results(
-    ticker: str = Query(None),
-    interval: str = Query(None),
-    strategy: str = Query(None)
-):
-    df = pd.read_csv(os.path.join(RESULTS_DIR, "batch_results.csv"), sep=";")
-    if ticker:
-        df = df[df["ticker"] == ticker]
-    if interval:
-        df = df[df["interval"] == interval]
-    if strategy and strategy != "ensemble":
-        df = df[df["strategy"] == strategy]
-    if strategy == "ensemble":
-        try:
-            ens = pd.read_csv(os.path.join(RESULTS_DIR, "ensemble_batch_results.csv"), sep=";")
-            if ticker:
-                ens = ens[ens["ticker"] == ticker]
-            if interval:
-                ens = ens[ens["interval"] == interval]
-            return ens.to_dict(orient="records")
-        except Exception:
-            raise HTTPException(status_code=404, detail="Brak wyników ensemble.")
-    return df.to_dict(orient="records")
-
-@app.get("/signals")
-def get_signals(
-    ticker: str,
-    interval: str,
-    strategy: str = "ensemble",
-    db: Session = Depends(get_db),
-):
-    df = _load_signals(db, ticker, interval, strategy)
-    if df.empty:
-        raise HTTPException(status_code=404, detail="Brak sygnałów")
-    df["date"] = df["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
-    cols = [c for c in df.columns if c in ("date", "signal", "close")]
-    return df[cols].to_dict(orient="records")
-
-# --- NOWOŚĆ: endpoint do agregacji sygnałów ---
-@app.post("/signals/aggregate")
-def aggregate_signals(body: dict = Body(...), db: Session = Depends(get_db)):
-    ticker = body.get("ticker")
-    interval = body.get("interval")
-    strategies = body.get("strategies")
-    mode = body.get("mode", "and")
-    weights = body.get("weights", None)
-    if not (ticker and interval and mode):
-        raise HTTPException(status_code=400, detail="Brak wymaganych parametrów.")
-    if not strategies:
+    try:
         strategies = _list_strategies(db)
-
-    all_signals = []
-    for strat in strategies:
-        df = _load_signals(db, ticker, interval, strat)
-        if df.empty:
-            continue
-        df = df[["date", "signal"]].copy()
-        df.rename(columns={"signal": f"signal_{strat}"}, inplace=True)
-        all_signals.append(df)
-    if not all_signals:
-        return []
-    merged = reduce(lambda left, right: pd.merge(left, right, on="date", how="outer"), all_signals)
-    merged = merged.sort_values("date")
-    sigcols = [c for c in merged.columns if c.startswith("signal_")]
-    if mode == "and":
-        merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if all(x == 1 for x in row) else -1 if all(x == -1 for x in row) else 0, axis=1)
-    elif mode == "or":
-        merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if any(x == 1 for x in row) else -1 if any(x == -1 for x in row) else 0, axis=1)
-    elif mode == "vote":
-        weight_vals = [weights.get(c.replace("signal_", ""), 1.0) if weights else 1.0 for c in sigcols]
-        def weighted_vote(row):
-            s = sum(w * (row[col] if pd.notnull(row[col]) else 0) for w, col in zip(weight_vals, sigcols))
-            if s > 0: return 1
-            if s < 0: return -1
-            return 0
-        merged["signal"] = merged.apply(weighted_vote, axis=1)
-    else:
-        raise HTTPException(status_code=400, detail="Nieznany tryb agregacji.")
-    merged["date"] = merged["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
-    return merged[["date", "signal"]].to_dict(orient="records")
-
-# --- NOWOŚĆ: endpoint do equity curve dla agregatu ---
-@app.post("/equity/aggregate")
-def aggregate_equity(body: dict = Body(...), db: Session = Depends(get_db)):
-    ticker = body.get("ticker")
-    interval = body.get("interval")
-    strategies = body.get("strategies")
-    mode = body.get("mode", "and")
-    weights = body.get("weights", None)
-    initial_cash = 100000  # albo z configu
-
-    if not strategies:
-        strategies = _list_strategies(db)
-
-    all_signals = []
-    closes = None
-    for strat in strategies:
-        df = _load_signals(db, ticker, interval, strat)
-        if df.empty:
-            continue
-        if closes is None and "close" in df.columns:
-            closes = df[["date", "close"]].copy()
-        df = df[["date", "signal"]].copy()
-        df.rename(columns={"signal": f"signal_{strat}"}, inplace=True)
-        all_signals.append(df)
-    if not all_signals or closes is None:
-        return []
-    merged = reduce(lambda left, right: pd.merge(left, right, on="date", how="outer"), all_signals)
-    merged = pd.merge(merged, closes, on="date", how="left")
-    merged = merged.sort_values("date")
-    sigcols = [c for c in merged.columns if c.startswith("signal_")]
-    if mode == "and":
-        merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if all(x == 1 for x in row) else -1 if all(x == -1 for x in row) else 0, axis=1)
-    elif mode == "or":
-        merged["signal"] = merged[sigcols].apply(
-            lambda row: 1 if any(x == 1 for x in row) else -1 if any(x == -1 for x in row) else 0, axis=1)
-    elif mode == "vote":
-        weight_vals = [weights.get(c.replace("signal_", ""), 1.0) if weights else 1.0 for c in sigcols]
-        def weighted_vote(row):
-            s = sum(w * (row[col] if pd.notnull(row[col]) else 0) for w, col in zip(weight_vals, sigcols))
-            if s > 0: return 1
-            if s < 0: return -1
-            return 0
-        merged["signal"] = merged.apply(weighted_vote, axis=1)
-    else:
-        raise HTTPException(status_code=400, detail="Nieznany tryb agregacji.")
-
-    cash = initial_cash
-    position = 0
-    equity_curve = []
-    last_price = None
-    for _, row in merged.iterrows():
-        price = row["close"]
-        signal = row["signal"]
-        if pd.isnull(price) or pd.isnull(signal):
-            equity_curve.append((row["date"], cash))
-            continue
-        if signal == 1 and position == 0:
-            position = 1
-            entry_price = price
-        elif signal == -1 and position == 1:
-            cash *= price / entry_price
-            position = 0
-        equity_curve.append((row["date"], cash if position == 0 else cash * price / entry_price))
-        last_price = price
-    if position == 1 and last_price:
-        cash *= last_price / entry_price
-    equity = pd.DataFrame(equity_curve, columns=["date", "equity"])
-    equity["date"] = pd.to_datetime(equity["date"]).dt.strftime("%Y-%m-%d %H:%M:%S")
-    return equity.to_dict(orient="records")
-
-@app.get("/ping")
-def ping():
-    return {"ping": "pong"}
+    except Exception:
+        strategies = list(DEFAULT_STRATEGIES) + ["ensemble"]
+    return {"strategies": strategies}

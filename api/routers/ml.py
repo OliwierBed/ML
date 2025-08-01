@@ -13,7 +13,6 @@ class LSTMRequest(BaseModel):
     ticker: str
     interval: str
     epochs: Optional[int] = 25
-    n_steps: Optional[int] = 100
     seq_len: Optional[int] = 160
 
 

@@ -3,6 +3,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator
 import yaml
 
+from db.models import Base
+
 def get_db_url():
     with open("config/config.yaml", "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -15,6 +17,10 @@ def get_db_url():
 DATABASE_URL = get_db_url()
 
 engine = create_engine(DATABASE_URL)
+
+# Ensure required tables exist on startup
+Base.metadata.create_all(bind=engine)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db() -> Generator[Session, None, None]:

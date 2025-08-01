@@ -29,5 +29,6 @@ streamlit run dashboard.py     # frontend on http://localhost:8501
 
 The backend endpoints are documented at `http://localhost:8000/docs`.
 The application requires a running Postgres instance populated with market
-data. CSV files in the repository are provided only for downloading or
+data.  On startup the backend ensures the `candles` table exists, creating it
+if necessary.  CSV files in the repository are provided only for downloading or
 pre-processing data prior to inserting it into the database.

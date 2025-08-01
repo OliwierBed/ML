@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Query, HTTPException, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
-import os
 from functools import reduce
 import yaml
 from api.routers import ml
@@ -10,7 +9,7 @@ from sqlalchemy.orm import Session
 from db.session import get_db
 from db.models import Candle
 from db.utils.load_from_db import load_data_from_db
-from backtest.runner_db import STRATEGY_MAP
+from backtest.runner_db import STRATEGY_MAP, run_backtest
 
 app = FastAPI(title="TradingBot API")
 
@@ -24,9 +23,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-RESULTS_DIR = "data-pipelines/feature_stores/data/results"
-
 
 def _load_signals(db: Session | None, ticker: str, interval: str, strategy: str) -> pd.DataFrame:
     """Return signal dataframe for the requested strategy.
@@ -118,28 +114,17 @@ def get_strategies(db: Session = Depends(get_db)):
 
 @app.get("/results")
 def get_results(
-    ticker: str = Query(None),
-    interval: str = Query(None),
-    strategy: str = Query(None)
+    ticker: str = Query(...),
+    interval: str = Query(...),
+    strategy: str = Query(...),
 ):
-    df = pd.read_csv(os.path.join(RESULTS_DIR, "batch_results.csv"), sep=";")
-    if ticker:
-        df = df[df["ticker"] == ticker]
-    if interval:
-        df = df[df["interval"] == interval]
-    if strategy and strategy != "ensemble":
-        df = df[df["strategy"] == strategy]
-    if strategy == "ensemble":
-        try:
-            ens = pd.read_csv(os.path.join(RESULTS_DIR, "ensemble_batch_results.csv"), sep=";")
-            if ticker:
-                ens = ens[ens["ticker"] == ticker]
-            if interval:
-                ens = ens[ens["interval"] == interval]
-            return ens.to_dict(orient="records")
-        except Exception:
-            raise HTTPException(status_code=404, detail="Brak wyników ensemble.")
-    return df.to_dict(orient="records")
+    with open("config/config.yaml", "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    initial_cash = cfg.get("backtest", {}).get("initial_cash", 100000)
+    metrics = run_backtest(ticker, interval, strategy, initial_cash)
+    if not metrics:
+        raise HTTPException(status_code=404, detail="Brak wyników backtestu")
+    return [metrics]
 
 @app.get("/signals")
 def get_signals(

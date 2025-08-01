@@ -26,6 +26,7 @@ The compose file starts the backend and the Streamlit frontend with the correct 
 - `GET /ml/forecast` – produce price forecast using the trained LSTM model.
 - `GET /ml/backtest` – evaluate the LSTM model on historical data.
 - `GET /backtest/run` – run backtests for classical strategies (SMA, EMA, RSI, MACD, Bollinger).
+- `GET /results` – compute metrics for a specific ticker/interval/strategy on demand.
 - `GET /signals` – fetch signal series for a given strategy (computed on the fly if the DB is missing).
 - `POST /signals/aggregate` – combine signals from many strategies using AND/OR/vote modes.
 - `POST /equity/aggregate` – compute equity curve for aggregated signals.

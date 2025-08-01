@@ -6,7 +6,6 @@ from omegaconf import OmegaConf
 
 from backtest.evaluate import evaluate_backtest
 from backtest.portfolio import BacktestEngine
-from backtest.rules import get_strategy
 from db.utils.load_from_db import load_data_from_db
 from backtest.utils import annualization_factor_from_interval
 
@@ -18,6 +17,13 @@ from backtest.strategies import (
     BollingerBandsStrategy,
     EnsembleStrategy,
 )
+
+
+# 📄 Konfiguracja z pliku YAML
+config = OmegaConf.load("config/config.yaml")
+TICKERS = config["data"]["tickers"]
+INTERVALS = config["data"]["intervals"]
+STRATEGIES = config["backtest"]["strategies"]
 
 # 🔁 Mapowanie nazw na klasy strategii
 STRATEGY_MAP = {
@@ -31,7 +37,7 @@ STRATEGY_MAP = {
 
 
 def run_backtest(ticker, interval, strategy_name, initial_cash):
-    df = load_data_from_db(ticker=ticker, interval=interval, source="processed", strategy=None)
+    df = load_data_from_db(ticker=ticker, interval=interval, columns=["close"])
     if df is None or df.empty:
         print(f"⛔ Brak danych: {ticker}, {interval}, {strategy_name}")
         return None
@@ -68,7 +74,12 @@ def run_batch_backtest():
         for interval in INTERVALS:
             for strategy_name in STRATEGIES:
                 print(f"▶ Backtest: {ticker} / {interval} / {strategy_name}")
-                metrics = run_backtest(ticker, interval, strategy_name)
+                metrics = run_backtest(
+                    ticker,
+                    interval,
+                    strategy_name,
+                    config["backtest"]["initial_cash"],
+                )
                 if metrics:
                     all_results.append(metrics)
 

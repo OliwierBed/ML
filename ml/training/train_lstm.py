@@ -37,6 +37,8 @@ def train_lstm_model(ticker: str, interval: str, epochs: int = 25, seq_len: int 
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     df = load_data_from_db(ticker=ticker, interval=interval, columns=["close"])
+    if df.empty:
+        raise ValueError(f"Brak danych dla {ticker} {interval}.")
     _, series, _ = prepare_close_series(df)
 
     if len(series) <= seq_len:

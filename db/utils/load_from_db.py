@@ -9,10 +9,10 @@ def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = No
     """Return dataframe with candle data for *ticker* and *interval*.
 
     The function first attempts to read data from the Postgres database
-    configured for the project (via :func:`db.session.get_db`).  When the
+    configured for the project (via :func:`db.session.get_db`). When the
     database is unreachable—common when running locally without Docker—it
     gracefully falls back to a bundled SQLite database located at
-    ``data-pipelines/feature_stores/data/database.db``.  Only selected
+    ``data-pipelines/feature_stores/data/database.db``. Only selected
     *columns* are returned if specified.
     """
 
@@ -32,13 +32,15 @@ def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = No
             .order_by(Candle.timestamp.asc())
         )
         df = pd.read_sql(query.statement, db.bind)
+
     except Exception:
         # Fallback: read from SQLite snapshot
         sqlite_path = os.path.join(
             "data-pipelines", "feature_stores", "data", "database.db"
         )
         if not os.path.exists(sqlite_path):
-            raise
+            raise FileNotFoundError(f"SQLite fallback file not found: {sqlite_path}")
+        
         conn = sqlite3.connect(sqlite_path)
         query = (
             "SELECT date, open, high, low, close, volume "
@@ -56,4 +58,3 @@ def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = No
         df = df[[col for col in df.columns if col.lower() in columns_lower]]
 
     return df
-

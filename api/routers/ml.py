@@ -31,6 +31,27 @@ def train_lstm(req: LSTMRequest):
         return {"status": "error", "message": str(e)}
 
 
+@router.get("/train")
+def train_lstm_get(
+    ticker: str = Query(...),
+    interval: str = Query(...),
+    epochs: int = Query(25),
+    seq_len: int = Query(160),
+):
+    """GET variant of model training for environments where sending a JSON body
+    is inconvenient (e.g., simple browser calls)."""
+    try:
+        train_lstm_model(
+            ticker=ticker,
+            interval=interval,
+            epochs=epochs,
+            seq_len=seq_len,
+        )
+        return {"status": "success", "message": f"Model dla {ticker} {interval} wytrenowany."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/forecast")
 def forecast_lstm(
     ticker: str = Query(...),

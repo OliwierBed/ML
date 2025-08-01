@@ -18,8 +18,13 @@ DATABASE_URL = get_db_url()
 
 engine = create_engine(DATABASE_URL)
 
-# Ensure required tables exist on startup
-Base.metadata.create_all(bind=engine)
+# Ensure required tables exist so API calls don't fail with "relation does not exist".
+# If the database is unreachable we allow the import to continue so callers can
+# handle connection errors gracefully later on.
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception:
+    pass
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

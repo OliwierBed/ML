@@ -4,7 +4,6 @@ import os
 import sqlite3
 import pandas as pd
 
-
 def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = None) -> pd.DataFrame:
     """Return dataframe with candle data for *ticker* and *interval*.
 
@@ -17,7 +16,6 @@ def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = No
     """
 
     try:
-        # Attempt to load using the ORM (Postgres)
         from db.models import Candle
         from db.session import get_db
 
@@ -32,15 +30,11 @@ def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = No
             .order_by(Candle.timestamp.asc())
         )
         df = pd.read_sql(query.statement, db.bind)
-
     except Exception:
-        # Fallback: read from SQLite snapshot
-        sqlite_path = os.path.join(
-            "data-pipelines", "feature_stores", "data", "database.db"
-        )
+        sqlite_path = os.path.join("data-pipelines", "feature_stores", "data", "database.db")
         if not os.path.exists(sqlite_path):
             raise FileNotFoundError(f"SQLite fallback file not found: {sqlite_path}")
-        
+
         conn = sqlite3.connect(sqlite_path)
         query = (
             "SELECT date, open, high, low, close, volume "
@@ -51,10 +45,14 @@ def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = No
 
     if columns is not None:
         columns_lower = [c.lower() for c in columns]
-        # Always keep date/timestamp column if present to preserve time information
         for time_col in ("date", "timestamp"):
             if time_col in df.columns and time_col not in columns_lower:
                 columns_lower.append(time_col)
         df = df[[col for col in df.columns if col.lower() in columns_lower]]
+
+    if "timestamp" in df.columns and "date" not in df.columns:
+        df.rename(columns={"timestamp": "date"}, inplace=True)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
 
     return df

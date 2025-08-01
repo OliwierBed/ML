@@ -2,25 +2,49 @@ import os
 import streamlit as st
 import requests
 import pandas as pd
+import yaml
 
-# Use backend service inside Docker; override with BACKEND_URL for local runs
-API_URL = os.getenv("BACKEND_URL", "http://backend:8000")
+# Use backend service inside Docker; allow override for local runs.
+# Default points to localhost so running the dashboard without Docker works
+# out of the box. In docker-compose we set BACKEND_URL to the backend service.
+API_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+with open("config/config.yaml", "r", encoding="utf-8") as f:
+    CONFIG = yaml.safe_load(f)
 
 st.title("📊 ML Trading Bot Dashboard")
 
+
+def _fetch_list(endpoint: str, key: str):
+    """Helper to safely load basic lists from the backend."""
+    try:
+        resp = requests.get(f"{API_URL}/{endpoint}", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get(key, [])
+    except Exception as e:
+        st.error(f"❌ Nie można połączyć się z backendem ({endpoint}): {e}")
+        return []
+
+
 # ========== Wczytaj podstawowe dane z API ==========
-try:
-    tickers = requests.get(f"{API_URL}/tickers").json()["tickers"]
-    intervals = requests.get(f"{API_URL}/intervals").json()["intervals"]
-    strategies = requests.get(f"{API_URL}/strategies").json()["strategies"]
-except Exception as e:
-    st.error(f"❌ Nie można połączyć się z backendem: {e}")
+tickers = _fetch_list("tickers", "tickers") or CONFIG["data"].get("tickers", [])
+intervals = _fetch_list("intervals", "intervals") or CONFIG["data"].get("intervals", [])
+strategies = _fetch_list("strategies", "strategies") or list(CONFIG["backtest"].get("strategies", []))
+if "ensemble" not in strategies:
+    strategies.append("ensemble")
+
+if not tickers or not intervals or not strategies:
     st.stop()
 
 # ========== Wybór użytkownika ==========
 ticker = st.selectbox("🎯 Wybierz instrument:", tickers)
 interval = st.selectbox("⏱️ Wybierz interwał:", intervals)
-selected_strategies = st.multiselect("📚 Wybierz strategie:", strategies, default=[strategies[0]])
+use_all = st.checkbox("Wybierz wszystkie strategie", value=True)
+selected_strategies = st.multiselect(
+    "📚 Wybierz strategie:",
+    strategies,
+    default=strategies if use_all else [strategies[0]],
+)
 
 agg_mode = "AND"
 if len(selected_strategies) > 1:

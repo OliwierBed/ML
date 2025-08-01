@@ -3,11 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
 from functools import reduce
+import yaml
 from api.routers import ml
 from api.routers import backtest
 from sqlalchemy.orm import Session
 from db.session import get_db
 from db.models import Candle
+from db.utils.load_from_db import load_data_from_db
+from backtest.runner_db import STRATEGY_MAP
 
 app = FastAPI(title="TradingBot API")
 
@@ -25,34 +28,90 @@ app.add_middleware(
 RESULTS_DIR = "data-pipelines/feature_stores/data/results"
 
 
-def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.DataFrame:
-    source = "ensemble" if strategy == "ensemble" else "processed"
-    q = db.query(Candle.timestamp.label("date"), Candle.signal, Candle.close).filter(
-        Candle.ticker == ticker,
-        Candle.interval == interval,
-        Candle.source == source,
-    )
-    if strategy != "ensemble":
-        q = q.filter(Candle.strategy == strategy)
-    q = q.order_by(Candle.timestamp.asc())
-    df = pd.read_sql(q.statement, db.bind)
-    df["date"] = pd.to_datetime(df["date"])
-    return df
+def _load_signals(db: Session | None, ticker: str, interval: str, strategy: str) -> pd.DataFrame:
+    """Return signal dataframe for the requested strategy.
+
+    Tries to pull precomputed signals from the database. If the database
+    is unavailable or empty, it falls back to computing signals on the fly
+    from locally stored market data.
+    """
+
+    try:
+        if db is None:
+            raise RuntimeError("db unavailable")
+        source = "ensemble" if strategy == "ensemble" else "processed"
+        q = db.query(Candle.timestamp.label("date"), Candle.signal, Candle.close).filter(
+            Candle.ticker == ticker,
+            Candle.interval == interval,
+            Candle.source == source,
+        )
+        if strategy != "ensemble":
+            q = q.filter(Candle.strategy == strategy)
+        q = q.order_by(Candle.timestamp.asc())
+        df = pd.read_sql(q.statement, db.bind)
+        df["date"] = pd.to_datetime(df["date"])
+        return df
+    except Exception:
+        df = load_data_from_db(ticker=ticker, interval=interval)
+        if df is None or df.empty:
+            return pd.DataFrame()
+        df["date"] = pd.to_datetime(df.get("date", df.get("timestamp")))
+        strat = strategy
+        if strat == "ensemble":
+            with open("config/config.yaml", "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f)
+            base_strats = [s for s in cfg.get("backtest", {}).get("strategies", []) if s not in ("lstm", "ensemble")]
+            sig_frames = []
+            for s in base_strats:
+                strat_cls = STRATEGY_MAP.get(s)
+                if not strat_cls:
+                    continue
+                sig = strat_cls(df).generate_signals()
+                sig_frames.append(sig.rename(columns={"signal": f"signal_{s}"}))
+            if not sig_frames:
+                return pd.DataFrame()
+            merged = pd.concat(sig_frames, axis=1)
+            merged.fillna(0, inplace=True)
+            merged["signal"] = merged.mean(axis=1).round().clip(-1, 1)
+            out = pd.DataFrame({"date": df["date"], "close": df.get("close"), "signal": merged["signal"]})
+            return out
+        strat_cls = STRATEGY_MAP.get(strat)
+        if not strat_cls:
+            return pd.DataFrame()
+        signals = strat_cls(df).generate_signals()
+        df["signal"] = signals["signal"]
+        cols = [c for c in ("date", "signal", "close") if c in df.columns]
+        return df[cols]
 
 @app.get("/tickers")
 def get_tickers(db: Session = Depends(get_db)):
-    tickers = db.query(Candle.ticker).filter(Candle.source == "raw").distinct().all()
-    return {"tickers": sorted(t[0] for t in tickers)}
+    try:
+        tickers = db.query(Candle.ticker).filter(Candle.source == "raw").distinct().all()
+        return {"tickers": sorted(t[0] for t in tickers)}
+    except Exception:
+        with open("config/config.yaml", "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        return {"tickers": cfg.get("data", {}).get("tickers", [])}
 
 @app.get("/intervals")
 def get_intervals(db: Session = Depends(get_db)):
-    intervals = db.query(Candle.interval).filter(Candle.source == "raw").distinct().all()
-    return {"intervals": sorted(i[0] for i in intervals)}
+    try:
+        intervals = db.query(Candle.interval).filter(Candle.source == "raw").distinct().all()
+        return {"intervals": sorted(i[0] for i in intervals)}
+    except Exception:
+        with open("config/config.yaml", "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        return {"intervals": cfg.get("data", {}).get("intervals", [])}
 
 @app.get("/strategies")
 def get_strategies(db: Session = Depends(get_db)):
-    strategies = db.query(Candle.strategy).filter(Candle.strategy.isnot(None)).distinct().all()
-    strat_list = sorted({s[0] for s in strategies if s[0]})
+    try:
+        strategies = db.query(Candle.strategy).filter(Candle.strategy.isnot(None)).distinct().all()
+        strat_list = sorted({s[0] for s in strategies if s[0]})
+    except Exception:
+        with open("config/config.yaml", "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        strat_list = cfg.get("backtest", {}).get("strategies", [])
     if "ensemble" not in strat_list:
         strat_list.append("ensemble")
     return {"strategies": strat_list}

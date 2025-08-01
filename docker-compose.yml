@@ -50,6 +50,8 @@ services:
       - "8501:8501"
     volumes:
       - .:/app
+    environment:
+      BACKEND_URL: http://backend:8000
 
 volumes:
   pgdata:

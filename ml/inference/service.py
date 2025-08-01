@@ -31,6 +31,8 @@ def lstm_forecast_service(ticker: str, interval: str, n_steps: int = 100, seq_le
         raise FileNotFoundError(f"Brak modelu: {model_path}. Najpierw wywołaj POST /ml/train.")
 
     df = load_data_from_db(ticker=ticker, interval=interval, columns=["close"])
+    if df.empty:
+        raise ValueError(f"Brak danych dla {ticker} {interval}.")
     df_clean, series_scaled, scaler = _prepare_series_with_ma_and_scaler(df)
 
     if len(series_scaled) < seq_len:
@@ -67,6 +69,8 @@ def lstm_backtest_service(ticker: str, interval: str, n_steps: int = 100, seq_le
         raise FileNotFoundError(f"Brak modelu: {model_path}. Najpierw wywołaj POST /ml/train.")
 
     df = load_data_from_db(ticker=ticker, interval=interval, columns=["close"])
+    if df.empty:
+        raise ValueError(f"Brak danych dla {ticker} {interval}.")
     df_clean, series_scaled, scaler = _prepare_series_with_ma_and_scaler(df)
 
     if len(series_scaled) < (seq_len + n_steps):

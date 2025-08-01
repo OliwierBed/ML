@@ -8,6 +8,24 @@ from api.routers import backtest
 from sqlalchemy.orm import Session
 from db.session import get_db
 from db.models import Candle
+from db.utils.load_from_db import load_data_from_db
+from config.load import load_config
+
+from backtest.strategies import (
+    MACDCrossoverStrategy,
+    RSIStrategy,
+    SMAStrategy,
+    EMAStrategy,
+    BollingerBandsStrategy,
+)
+
+STRATEGY_MAP = {
+    "macd": MACDCrossoverStrategy,
+    "rsi": RSIStrategy,
+    "sma": SMAStrategy,
+    "ema": EMAStrategy,
+    "bollinger": BollingerBandsStrategy,
+}
 
 app = FastAPI(title="TradingBot API")
 
@@ -22,40 +40,103 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+CFG = load_config()
 RESULTS_DIR = "data-pipelines/feature_stores/data/results"
 
 
 def _load_signals(db: Session, ticker: str, interval: str, strategy: str) -> pd.DataFrame:
     source = "ensemble" if strategy == "ensemble" else "processed"
-    q = db.query(Candle.timestamp.label("date"), Candle.signal, Candle.close).filter(
-        Candle.ticker == ticker,
-        Candle.interval == interval,
-        Candle.source == source,
-    )
-    if strategy != "ensemble":
-        q = q.filter(Candle.strategy == strategy)
-    q = q.order_by(Candle.timestamp.asc())
-    df = pd.read_sql(q.statement, db.bind)
-    df["date"] = pd.to_datetime(df["date"])
+    try:
+        q = db.query(Candle.timestamp.label("date"), Candle.signal, Candle.close).filter(
+            Candle.ticker == ticker,
+            Candle.interval == interval,
+            Candle.source == source,
+        )
+        if strategy != "ensemble":
+            q = q.filter(Candle.strategy == strategy)
+        q = q.order_by(Candle.timestamp.asc())
+        df = pd.read_sql(q.statement, db.bind)
+    except Exception:
+        df = pd.DataFrame()
+
+    if df.empty:
+        try:
+            raw = load_data_from_db(ticker=ticker, interval=interval, columns=["close"])
+        except Exception:
+            return pd.DataFrame()
+        if raw.empty or strategy == "ensemble":
+            return pd.DataFrame()
+        strat_cls = STRATEGY_MAP.get(strategy)
+        if strat_cls is None:
+            return pd.DataFrame()
+        raw = raw.copy()
+        if "timestamp" in raw.columns and "date" not in raw.columns:
+            raw.rename(columns={"timestamp": "date"}, inplace=True)
+        raw["date"] = pd.to_datetime(raw["date"])
+        signals = strat_cls(raw).generate_signals()
+        raw["signal"] = signals["signal"].values
+        return raw[["date", "signal", "close"]]
+
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+    if "signal" not in df.columns:
+        return pd.DataFrame()
     return df
+
+
+def _list_strategies(db: Session) -> list[str]:
+    """Return all strategy names registered in the database or fallback config."""
+    try:
+        strategies = (
+            db.query(Candle.strategy)
+            .filter(Candle.strategy.isnot(None))
+            .distinct()
+            .all()
+        )
+        strat_list = sorted({s[0] for s in strategies if s[0]})
+    except Exception:
+        strat_list = []
+
+    if not strat_list:
+        strat_list = list(getattr(CFG.backtest, "strategies", []))
+
+    if "ensemble" not in strat_list:
+        strat_list.append("ensemble")
+    return strat_list
 
 @app.get("/tickers")
 def get_tickers(db: Session = Depends(get_db)):
-    tickers = db.query(Candle.ticker).filter(Candle.source == "raw").distinct().all()
-    return {"tickers": sorted(t[0] for t in tickers)}
+    try:
+        tickers = (
+            db.query(Candle.ticker)
+            .filter(Candle.source == "raw")
+            .distinct()
+            .all()
+        )
+        if tickers:
+            return {"tickers": sorted(t[0] for t in tickers)}
+    except Exception:
+        pass
+    return {"tickers": list(getattr(CFG.data, "tickers", []))}
 
 @app.get("/intervals")
 def get_intervals(db: Session = Depends(get_db)):
-    intervals = db.query(Candle.interval).filter(Candle.source == "raw").distinct().all()
-    return {"intervals": sorted(i[0] for i in intervals)}
+    try:
+        intervals = (
+            db.query(Candle.interval)
+            .filter(Candle.source == "raw")
+            .distinct()
+            .all()
+        )
+        if intervals:
+            return {"intervals": sorted(i[0] for i in intervals)}
+    except Exception:
+        pass
+    return {"intervals": list(getattr(CFG.data, "intervals", []))}
 
 @app.get("/strategies")
 def get_strategies(db: Session = Depends(get_db)):
-    strategies = db.query(Candle.strategy).filter(Candle.strategy.isnot(None)).distinct().all()
-    strat_list = sorted({s[0] for s in strategies if s[0]})
-    if "ensemble" not in strat_list:
-        strat_list.append("ensemble")
-    return {"strategies": strat_list}
+    return {"strategies": _list_strategies(db)}
 
 @app.get("/results")
 def get_results(
@@ -104,8 +185,10 @@ def aggregate_signals(body: dict = Body(...), db: Session = Depends(get_db)):
     strategies = body.get("strategies")
     mode = body.get("mode", "and")
     weights = body.get("weights", None)
-    if not (ticker and interval and strategies and mode):
+    if not (ticker and interval and mode):
         raise HTTPException(status_code=400, detail="Brak wymaganych parametrów.")
+    if not strategies:
+        strategies = _list_strategies(db)
 
     all_signals = []
     for strat in strategies:
@@ -148,6 +231,9 @@ def aggregate_equity(body: dict = Body(...), db: Session = Depends(get_db)):
     mode = body.get("mode", "and")
     weights = body.get("weights", None)
     initial_cash = 100000  # albo z configu
+
+    if not strategies:
+        strategies = _list_strategies(db)
 
     all_signals = []
     closes = None

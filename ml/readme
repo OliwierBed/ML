@@ -22,7 +22,7 @@ ml/
 ## 🧠 Działanie systemu
 
 ### 1. Trening (`train_lstm.py`)
-- Trenuje model LSTM na danych z `data-pipelines/feature_stores/data/raw/{ticker}_{interval}_*.csv`.
+- Trenuje model LSTM na danych pobranych z bazy Postgres przez `load_data_from_db`.
 - Dane `close` są normalizowane (domyślnie), ale można rozszerzyć o inne kolumny.
 - Zapisuje:
   - `.pth` – model,
@@ -31,7 +31,7 @@ ml/
 
 ### 2. Predykcja (`service.py`)
 - Ładuje najnowszy model `.pth` + `.scaler.pkl` + `.meta.json` z `saved_models/`.
-- Pobiera dane z katalogu `raw/`, wycina ostatnie `seq_len` wartości i generuje prognozę.
+- Pobiera dane z tej samej bazy danych, wycina ostatnie `seq_len` wartości i generuje prognozę.
 
 ---
 
@@ -76,7 +76,7 @@ Domyślnie model działa tylko na `close`. Aby dodać inne cechy:
 
 - Frontend i backend API **automatycznie** korzystają z najnowszego modelu `.pth` + `.scaler.pkl` + `.meta.json`.
 - Można łatwo trenować i przewidywać dowolny `ticker` + `interval`.
-- Wystarczy umieścić dane w `data/raw/` i wszystko działa.
+- Wystarczy umieścić dane w bazie danych – pliki CSV służą jedynie do pobrania lub wstępnego przetwarzania przed importem.
 
 ---
 
@@ -102,3 +102,4 @@ POST /ml/train?ticker=AAPL&interval=1d&epochs=30
 
 Predykcja:
 GET /ml/forecast?ticker=AAPL&interval=1d&n_steps=100
+

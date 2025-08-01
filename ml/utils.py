@@ -24,6 +24,10 @@ def prepare_close_series(df: pd.DataFrame, window: int = 10):
 
     data["close_ma"] = data["close"].rolling(window=window).mean()
     data = data.dropna(subset=["close_ma"]).reset_index(drop=True)
+    if data.empty:
+        raise ValueError(
+            f"Za mało danych do obliczenia MA({window}). Dostępne: {len(df)}"
+        )
 
     scaler = MinMaxScaler()
     data["close_scaled"] = scaler.fit_transform(data[["close_ma"]])

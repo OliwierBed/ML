@@ -6,9 +6,8 @@ from omegaconf import OmegaConf
 
 from backtest.evaluate import evaluate_backtest
 from backtest.portfolio import BacktestEngine
-from backtest.rules import get_strategy
-from db.utils.load_from_db import load_data_from_db
 from backtest.utils import annualization_factor_from_interval
+from db.utils.load_from_db import load_data_from_db
 
 from backtest.strategies import (
     MACDCrossoverStrategy,
@@ -31,7 +30,7 @@ STRATEGY_MAP = {
 
 
 def run_backtest(ticker, interval, strategy_name, initial_cash):
-    df = load_data_from_db(ticker=ticker, interval=interval, source="processed", strategy=None)
+    df = load_data_from_db(ticker=ticker, interval=interval)
     if df is None or df.empty:
         print(f"⛔ Brak danych: {ticker}, {interval}, {strategy_name}")
         return None
@@ -46,7 +45,7 @@ def run_backtest(ticker, interval, strategy_name, initial_cash):
 
     if "signal" in df.columns:
         df.drop(columns=["signal"], inplace=True)
-    df["signal"] = signals["signal"]
+    df["signal"] = signals["signal"].fillna(0)
 
     if df["signal"].isna().all():
         print(f"⛔ Sygnał zawiera tylko NaN – pomijam {ticker} / {interval} / {strategy_name}")

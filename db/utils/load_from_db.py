@@ -1,41 +1,64 @@
+"""Utility for fetching market data from database or local snapshot."""
+
+import os
+import sqlite3
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.engine import URL
-import yaml
 
-# 📅 Wczytaj konfigurację
-with open("config/config.yaml", "r", encoding="utf-8") as f:
-    config = yaml.safe_load(f)
 
-# 📂 Połączenie z bazą danych
-db_url = URL.create(
-    drivername="postgresql+psycopg2",
-    username=config["database"]["user"],
-    password=config["database"]["password"],
-    host=config["database"]["host"],
-    port=config["database"]["port"],
-    database=config["database"]["name"],
-)
-engine = create_engine(db_url)
+def load_data_from_db(ticker: str, interval: str, columns: list[str] | None = None) -> pd.DataFrame:
+    """Return dataframe with candle data for *ticker* and *interval*.
 
-# 🔍 Funkcja do wczytywania danych z bazy
-def load_data_from_db(ticker: str, interval: str, columns: list[str] = None) -> pd.DataFrame:
-    from db.models import Candle
-    from db.session import get_db
+    The function first attempts to read data from the Postgres database
+    configured for the project (via :func:`db.session.get_db`).  When the
+    database is unreachable—common when running locally without Docker—it
+    gracefully falls back to a bundled SQLite database located at
+    ``data-pipelines/feature_stores/data/database.db``.  Only selected
+    *columns* are returned if specified.
+    """
 
-    db = next(get_db())
+    try:
+        # Attempt to load using the ORM (Postgres)
+        from db.models import Candle
+        from db.session import get_db
 
-    query = db.query(Candle).filter(
-        Candle.ticker == ticker,
-        Candle.interval == interval,
-        Candle.source == "raw"
-    ).order_by(Candle.timestamp.asc())
+        db = next(get_db())
+        query = (
+            db.query(Candle)
+            .filter(
+                Candle.ticker == ticker,
+                Candle.interval == interval,
+                Candle.source == "raw",
+            )
+            .order_by(Candle.timestamp.asc())
+        )
+        df = pd.read_sql(query.statement, db.bind)
+    except Exception:
+        # Fallback: read from SQLite snapshot
+        sqlite_path = os.path.join(
+            "data-pipelines", "feature_stores", "data", "database.db"
+        )
+        if not os.path.exists(sqlite_path):
+            raise
+        conn = sqlite3.connect(sqlite_path)
+        query = (
+            "SELECT date, open, high, low, close, volume "
+            "FROM stock_data WHERE ticker=? AND interval=? ORDER BY date ASC"
+        )
+        df = pd.read_sql(query, conn, params=(ticker, interval))
+        conn.close()
 
-    df = pd.read_sql(query.statement, db.bind)
+    if "timestamp" in df.columns and "date" not in df.columns:
+        df.rename(columns={"timestamp": "date"}, inplace=True)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
 
-    # Domyślnie pobieraj wszystkie kolumny
     if columns is not None:
-        columns_lower = [col.lower() for col in columns]
+        columns_lower = [c.lower() for c in columns]
+        # Always keep date/timestamp column if present to preserve time information
+        for time_col in ("date", "timestamp"):
+            if time_col in df.columns and time_col not in columns_lower:
+                columns_lower.append(time_col)
         df = df[[col for col in df.columns if col.lower() in columns_lower]]
 
     return df
+

@@ -17,9 +17,16 @@ DATABASE_URL = get_db_url()
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
+
+def get_db() -> Generator[Session | None, None, None]:
+    """Yield a database session or ``None`` if connection fails."""
+
+    try:
+        db = SessionLocal()
+    except Exception:
+        db = None
     try:
         yield db
     finally:
-        db.close()
+        if db is not None:
+            db.close()
